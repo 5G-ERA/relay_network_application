@@ -4,3 +4,4 @@ flask==2.2.*
 flask_session==0.4.*
 simple-websocket==0.9.0
 pymongo
+strenum~=0.4.15

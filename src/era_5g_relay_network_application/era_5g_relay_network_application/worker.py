@@ -4,7 +4,7 @@ import flask_socketio
 import logging
 from threading import Event, Thread
 import rospy
-from rosbridge_library.internal.message_conversion import populate_instance
+from rosbridge_library.internal.message_conversion import populate_instance, FieldTypeMismatchException
 from rosbridge_library.internal import ros_loader
 
 from sensor_msgs.msg import LaserScan
@@ -44,6 +44,9 @@ class Worker(Thread):
             return populate_instance(d, self.inst)
         except Empty:
             return None 
+        except FieldTypeMismatchException:
+            logging.warn("Failed to convert message")
+            return None
     
         
         

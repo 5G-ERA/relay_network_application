@@ -1,17 +1,11 @@
-from queue import Empty, Queue
-import time
 from typing import Any, Set
-import flask_socketio
-import logging
-from threading import Event, Thread
 import rospy
 from rosbridge_library.internal.message_conversion import populate_instance, extract_values
 from rosbridge_library.internal import ros_loader
 from socketio import Server
-
-
-from sensor_msgs.msg import LaserScan
-
+from threading import Lock
+from era_5g_relay_network_application.dataclasses.packets import MessagePacket, PacketType
+from dataclasses import asdict
 
 class WorkerResults():
     """
@@ -30,7 +24,6 @@ class WorkerResults():
         """
 
         super().__init__(**kw)
-        self.stop_event = Event()
         
         inst = ros_loader.get_message_instance(topic_type)
         self.pub = rospy.Subscriber(topic_name, type(inst), queue_size=10, callback=self.callback)
@@ -39,13 +32,14 @@ class WorkerResults():
         self.subscribers = subscribers
         self.topic_name = topic_name
         self.topic_type = topic_type
+        self.subscribers_lock = Lock()
 
     def callback(self, data: Any):
         msg = extract_values(data)
-        message = {"topic_name": self.topic_name, "topic_type": self.topic_type, "msg": msg} 
-        
-        for s in self.subscribers:
-            self.sio.emit("message", message, namespace="/results", to=self.sio.manager.sid_from_eio_sid(s, "/results"))
+        message = MessagePacket(packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type)
+        with self.subscribers_lock:
+            for s in self.subscribers:
+                self.sio.emit("message", asdict(message), namespace="/results", to=self.sio.manager.sid_from_eio_sid(s, "/results"))
         
 
     

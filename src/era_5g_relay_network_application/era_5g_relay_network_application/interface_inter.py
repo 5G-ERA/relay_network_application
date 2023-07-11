@@ -1,50 +1,35 @@
-import base64
-
-import argparse
-import binascii
-from dataclasses import asdict
-import os
-from era_5g_relay_network_application.utils import load_topic_list, load_services_list, build_service_response
-import numpy as np
+import json
 import logging
-import time
-from rosbridge_library.internal import ros_loader
-from rosbridge_library.internal.message_conversion import populate_instance, extract_values
-from era_5g_relay_network_application.dataclasses.packets import MessagePacket, ServiceRequestPacket, ServiceResponsePacket, PacketType
+import os
+from era_5g_client.dataclasses import NetAppLocation
 
 import socketio
-from queue import Full, Queue
 
-from typing import Dict, Set
+from typing import Dict, List, Set, FrozenSet
 from flask import Flask
 
-
-from era_5g_relay_network_application.worker import Worker
-from era_5g_relay_network_application.worker_image import WorkerImage
-from era_5g_relay_network_application.worker_results import WorkerResults
 from era_5g_interface.dataclasses.control_command import ControlCommand, ControlCmdType
+from era_5g_client.client_base import NetAppClientBase
 
-import rospy
+from era_5g_relay_network_application.dataclasses.packets import MessagePacket, ServiceRequestPacket, ServiceResponsePacket, PacketType
 
 from threading import Lock
 
 # port of the netapp's server
 NETAPP_PORT = os.getenv("NETAPP_PORT", 5896)
-# input queue size
-NETAPP_INPUT_QUEUE = int(os.getenv("NETAPP_INPUT_QUEUE", 1))
-
-#image_queue = Queue(NETAPP_INPUT_QUEUE)
     
 # the max_http_buffer_size parameter defines the max size of the message to be passed
 sio = socketio.Server(async_mode='threading', max_http_buffer_size=5*(1024**2))
 app = Flask(__name__)
 app.wsgi_app = socketio.WSGIApp(sio, app.wsgi_app)
 
-workers: Dict[str, Worker] = dict()
-
 result_subscribers: Set[str] = set()
 
-nh = None
+relay_clients: FrozenSet[NetAppClientBase] = frozenset()
+topics_to_clients: Dict[str, List[NetAppClientBase]] = dict()
+service_to_client: Dict[str, NetAppClientBase] = dict()
+
+response_id_to_sid: Dict[str, str] = dict()
 
 subscribers_lock = Lock()
 
@@ -95,6 +80,17 @@ def connect_results(sid, environ):
     print(f"Connected results. Session id: {sio.manager.eio_sid_from_sid(sid, '/data')}, namespace_id: {sid}")
     sio.send("You are connected", namespace='/results', to=sid)
 
+def get_clients(packet: MessagePacket):
+    if packet.topic_name is None:
+        logging.warn(f"The message is in wrong format: ")
+        return
+    
+    clients = topics_to_clients.get(packet.topic_name, [])
+    if not clients:
+        logging.error(f"Topic {packet.topic_name} not configured for transport!")
+    return clients
+    
+
 @sio.on('image', namespace='/data')
 def image_callback_websocket(sid, data: dict):
     """
@@ -108,70 +104,22 @@ def image_callback_websocket(sid, data: dict):
         ConnectionRefusedError: Raised when attempt for connection were made
             without registering first or frame was not passed in correct format.
     """
-    recv_timestamp = time.time_ns()
-    if 'timestamp' in data:
-        timestamp = data['timestamp']
-    else:
-        logging.debug("Timestamp not set, setting default value")
-        timestamp = 0
-
-    eio_sid = sio.manager.eio_sid_from_sid(sid, "/data")
-
-   
-      
-    if "frame" not in data:
-        logging.error(f"Data does not contain frame.")
-        sio.emit(
-            "image_error",
-            {"timestamp": timestamp,
-             "error": f"Data does not contain frame."},
-                namespace='/data',
-                to=sid
-            )
-        return  
-    
-
-    try:
-        metadata = data.get("metadata")
-        if metadata is None:
-            logging.warning(f"No metadata {data}")
-            return
-        topic_name = metadata.get("topic_name")
-        topic_type = metadata.get("topic_type")
-        msg = data.get("frame")
-        if topic_name is None or topic_type is None:
-            return
-        worker_thread = workers.get(topic_name)
-        if worker_thread is None:        
-            q = Queue(1)
-            worker_thread = WorkerImage(q, topic_name, topic_type)
-            worker_thread.daemon = True
-            worker_thread.start()
-            workers[topic_name] = worker_thread
-        try:
-            
-            worker_thread.queue.put(msg, block=False)
-        except Full:
-            pass    
-        
-    except (ValueError, binascii.Error) as error:
-        logging.error(f"Failed to decode frame data: {error}")
-        sio.emit(
-            "image_error",
-            {"timestamp": timestamp,
-             "error": f"Failed to decode frame data: {error}"},
-            namespace='/data',
-            to=sid
-            )
+    metadata = data.get("metadata")
+    if metadata is None:
+        logging.warning(f"No metadata")
+        return
+    topic_name = metadata.get("topic_name")
+    if topic_name is None:
+        logging.warn(f"The message is in wrong format")
         return
     
-    
-    
-       
+    clients = topics_to_clients.get(topic_name, [])
+    for client in clients:
+        client.send_image_ws_raw(data)
     
 
 @sio.on('json', namespace='/data')
-def json_callback_websocket(sid, data):
+def json_callback_websocket(sid, data: Dict):
     """
     Allows to receive general json data using the websocket transport
 
@@ -182,35 +130,18 @@ def json_callback_websocket(sid, data):
         ConnectionRefusedError: Raised when attempt for connection were made
             without registering first.
     """
-    logging.debug(f"client with task id: {sio.manager.eio_sid_from_sid(sid, '/data')} sent data {data}")
-    print(data)
-    global workers
     packet_type = data.get("packet_type")
     if packet_type == PacketType.MESSAGE:
         packet = MessagePacket(**data)
-        
-        worker_thread = workers.get(packet.topic_name)
-        if worker_thread is None:        
-            q = Queue(1)
-            worker_thread = Worker(q, packet.topic_name, packet.topic_type)
-            worker_thread.daemon = True
-            worker_thread.start()
-            workers[packet.topic_name] = worker_thread
-        try:
-            worker_thread.queue.put(packet.data, block=False)
-        except Full:
-            pass
-        
+        clients = get_clients(packet)    
+        for client in clients:
+            client.send_json_ws(data)
     elif packet_type == PacketType.SERVICE_REQUEST:
         packet = ServiceRequestPacket(**data)
-        proxy = rospy.ServiceProxy(packet.service_name, ros_loader.get_service_class(packet.service_type))
-        inst = ros_loader.get_service_request_instance(packet.service_type)
-        # Populate the instance with the provided args
-        res = proxy.call(populate_instance(packet.data, inst)) 
-        d = extract_values(res)
-        message = ServiceResponsePacket(packet_type=PacketType.SERVICE_RESPONSE, data=d, service_name=packet.service_name, service_type=packet.service_type, id=packet.id)
-        sio.emit("message", asdict(message), namespace="/results", to=sio.manager.sid_from_eio_sid(sid, "/results"))
-    
+        client = service_to_client.get(packet.service_name)
+        client.send_json_ws(data)
+        response_id_to_sid[data.get("id")] = sio.manager.sid_from_eio_sid(sid, "/results")
+
 @sio.on('command', namespace='/control')
 def json_callback_websocket(sid, data: Dict):
     command = ControlCommand(**data)
@@ -241,17 +172,50 @@ def disconnect_control(sid):
     print(f"Client disconnected from /control namespace: session id: {sid}")
 
 
-def main():
-    topics = load_topic_list()
-    services = load_services_list()
-    logging.getLogger().setLevel(logging.DEBUG)
-    global nh
-    nh = rospy.init_node('relay_netapp', anonymous=True, disable_signals=True)
-    for topic_name, topic_type in topics:
-        _ = WorkerResults(topic_name, topic_type, sio, result_subscribers)
-    #for service_name, service_type in services:
+def results(data: dict):
+    if type(data) is not dict:
+        return
+    packet_type = data.get("packet_type")
+    if packet_type == PacketType.MESSAGE:
+        with subscribers_lock:
+            for s in result_subscribers:
+                sio.emit("message", data, namespace="/results", to=sio.manager.sid_from_eio_sid(s, "/results"))
+    elif packet_type == PacketType.SERVICE_RESPONSE:
+        packet = ServiceResponsePacket(**data)
+        sid = response_id_to_sid.pop(packet.id)
+        sio.emit("message", data, namespace="/results", to=sid)
 
-    logging.info(f"The size of the queue set to: {NETAPP_INPUT_QUEUE}")
+def main():
+    relays_list = os.getenv("RELAYS_LIST")
+    if relays_list is None:
+        print("You need to specify list of relays using the RELAYS_LIST env variable")
+        return None
+    relays_data = json.loads(relays_list)
+    if len(relays_data) == 0:
+        print("You need to specify list of relays using the RELAYS_LIST env variable")
+        return None
+    global relay_clients
+    clients = set()
+    for relay in relays_data:
+        client = NetAppClientBase(results)
+        client.register(NetAppLocation(relay["relay_address"], relay["relay_port"]), args={"subscribe_results": True}, wait_until_available=True, wait_timeout=10)
+        clients.add(client)
+        if "topics" in relay:
+            for topic in relay["topics"]:
+                if topic in topics_to_clients:
+                    topics_to_clients[topic].append(client)
+                else:
+                    topics_to_clients[topic] = [client]
+        if "services" in relay:
+            for service in relay["services"]:
+                if service in service_to_client:
+                    logging.error("There can only be one relay per each service!")
+                    for client in clients:
+                        client.disconnect()
+                    return
+                service_to_client[service] = client
+    relay_clients = frozenset(clients)
+    logging.getLogger().setLevel(logging.DEBUG)
 
     # runs the flask server
     # allow_unsafe_werkzeug needs to be true to run inside the docker
