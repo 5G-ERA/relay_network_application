@@ -10,7 +10,6 @@ RUN mkdir -p /root/catkin_ws/src
 # Set the workspace as the working directory
 WORKDIR /root/catkin_ws
 
-COPY src/era_5g_relay_network_application /root/catkin_ws/src/era_5g_relay_network_application
 
 # Build the workspace
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make"
@@ -22,13 +21,13 @@ RUN apt-get update \
     && apt-get install -y python3-pip ros-noetic-rosbridge-library ffmpeg libsm6 libxext6 ros-noetic-cv-bridge git curl
 
 
+COPY src/era_5g_relay_network_application /root/catkin_ws/src/era_5g_relay_network_application
+
 RUN cd /root/catkin_ws/src/era_5g_relay_network_application \
     && python3 -m pip install -r requirement.txt \
     && python3 -m pip install .
 
-RUN echo "Asdf"
-
-RUN git clone https://github.com/Kapim/era-5g-interface.git \
+RUN git clone https://github.com/5G-ERA/era-5g-interface.git \
     && cd era-5g-interface \
     && python3 -m pip install -r requirements.txt \
     && ./pants package :: \

@@ -1,6 +1,3 @@
-import base64
-
-import argparse
 import binascii
 from dataclasses import asdict
 import os

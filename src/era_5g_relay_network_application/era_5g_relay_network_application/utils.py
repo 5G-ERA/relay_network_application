@@ -18,12 +18,12 @@ def load_topic_list():
 def load_services_list():
     service_list = os.getenv("SERVICE_LIST")
     if service_list is None:
-        return None
+        return []
     service_data = json.loads(service_list)
     try:
         services = [(service["service_name"], service["service_type"]) for service in service_data]
     except KeyError:
-        print("Wrong format of the TOPIC_LIST variable. The correct format is:")
+        print("Wrong format of the SERVICE_LIST variable. The correct format is:")
         print_format()
         return None
     return services

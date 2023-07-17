@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from era_5g_client.dataclasses import NetAppLocation
 
 import socketio
 
@@ -198,7 +197,7 @@ def main():
     clients = set()
     for relay in relays_data:
         client = NetAppClientBase(results)
-        client.register(NetAppLocation(relay["relay_address"], relay["relay_port"]), args={"subscribe_results": True}, wait_until_available=True, wait_timeout=10)
+        client.register(f"{relay['relay_address']}", args={"subscribe_results": True}, wait_until_available=True, wait_timeout=60)
         clients.add(client)
         if "topics" in relay:
             for topic in relay["topics"]:

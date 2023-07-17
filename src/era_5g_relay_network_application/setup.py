@@ -7,7 +7,7 @@ setup(name='era_5g_relay_network_application',
       description='Standalone variant of object detection NetApp',
       author='Amy Pond',
       author_email='amy.pond@tardis.earth',
-      packages=['era_5g_relay_network_application'],
+      packages=['era_5g_relay_network_application', 'era_5g_relay_network_application.dataclasses'],
 #      entry_points = {
 #              'console_scripts': [
 #                  'era_5g_network_application_template = era_5g_network_application_template.interface:main',                  
