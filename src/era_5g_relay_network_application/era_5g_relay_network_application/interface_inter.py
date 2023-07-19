@@ -199,20 +199,27 @@ def main():
         client = NetAppClientBase(results)
         client.register(f"{relay['relay_address']}", args={"subscribe_results": True}, wait_until_available=True, wait_timeout=60)
         clients.add(client)
-        if "topics" in relay:
-            for topic in relay["topics"]:
-                if topic in topics_to_clients:
-                    topics_to_clients[topic].append(client)
-                else:
-                    topics_to_clients[topic] = [client]
-        if "services" in relay:
-            for service in relay["services"]:
-                if service in service_to_client:
-                    logging.error("There can only be one relay per each service!")
-                    for client in clients:
-                        client.disconnect()
-                    return
-                service_to_client[service] = client
+        try:
+            if "topics" in relay:
+                for topic in relay["topics"]:
+                    if topic in topics_to_clients:
+                        topics_to_clients[topic].append(client)
+                    else:
+                        topics_to_clients[topic] = [client]
+        except TypeError:
+            print("The topics field in RELAYS_LIST needs to be a list")
+        services = relay.get("services", None)
+        try:
+            if services:
+                for service in relay["services"]:
+                    if service in service_to_client:
+                        logging.error("There can only be one relay per each service!")
+                        for client in clients:
+                            client.disconnect()
+                        return
+                    service_to_client[service] = client
+        except TypeError:
+            print("The services field in RELAYS_LIST needs to be a list")
     relay_clients = frozenset(clients)
     logging.getLogger().setLevel(logging.DEBUG)
 
