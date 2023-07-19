@@ -154,13 +154,13 @@ def main():
             client = NetAppClientBase(results, logging_level=logging.DEBUG, socketio_debug=False)
             client.register(f"{NETAPP_ADDRESS}", args={"subscribe_results": True})
             
-        for topic_name, topic_type in topics:
+        for topic_name, topic_name_remapped, topic_type in topics:
             
             topic_type_class = ros_loader.get_message_class(topic_type)
             if topic_type == "sensor_msgs/Image":   
-                callback = partial(callback_image, topic_type=topic_type, topic_name=topic_name)                 
+                callback = partial(callback_image, topic_type=topic_type, topic_name=topic_name_remapped)
             else:
-                callback = partial(callback_others, topic_type=topic_type, topic_name=topic_name)
+                callback = partial(callback_others, topic_type=topic_type, topic_name=topic_name_remapped)
             subs.append(rospy.Subscriber(topic_name, topic_type_class, callback))
         for service_name, service_type in services:
             service_type_class = ros_loader.get_service_class(service_type)
