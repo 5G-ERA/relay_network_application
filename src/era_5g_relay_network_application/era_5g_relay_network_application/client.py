@@ -4,7 +4,7 @@ import os
 import logging
 import signal
 from types import FrameType
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional
 import uuid
 from era_5g_client.client_base import FailedToConnect, NetAppClientBase
 from era_5g_client.client import NetAppClient, MiddlewareInfo
