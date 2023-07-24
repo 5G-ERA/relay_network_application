@@ -26,6 +26,7 @@ RUN cd src \
 RUN /bin/bash -c "source /root/catkin_ws/devel/setup.bash && catkin_make"
 
 COPY docker/system_monitor/start.sh /root/start.sh
+COPY docker/system_monitor/record_diagnostics.py /root/
 
 RUN chmod +x /root/start.sh
 ENTRYPOINT [ "/root/start.sh" ] 
