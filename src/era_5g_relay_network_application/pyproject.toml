@@ -17,3 +17,5 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[tool.black]
+line-length = 120
