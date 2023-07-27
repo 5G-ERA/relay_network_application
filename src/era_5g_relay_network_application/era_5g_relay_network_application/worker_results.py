@@ -14,7 +14,7 @@ class WorkerResults():
     the flask app. 
     """
 
-    def __init__(self, topic_name: str, topic_type: str, sio: Server, subscribers: Set, **kw):
+    def __init__(self, topic_name: str, topic_type: str, sio: Server, subscribers: Set, subscribers_lock: Lock, **kw):
         """
         Constructor
 
@@ -32,7 +32,7 @@ class WorkerResults():
         self.subscribers = subscribers
         self.topic_name = topic_name
         self.topic_type = topic_type
-        self.subscribers_lock = Lock()
+        self.subscribers_lock = subscribers_lock
 
     def callback(self, data: Any):
         msg = extract_values(data)
