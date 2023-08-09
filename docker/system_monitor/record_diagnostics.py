@@ -17,15 +17,15 @@ M_MEMORY_USAGE = 4
 
 measurements: List[Optional[float]] = []
 
-def clear_measurements():
 
+def clear_measurements():
     global measurements
     measurements = [None] * (M_MEMORY_USAGE + 1)
 
 
 def diagnostics_callback(msg: DiagnosticArray):
     stamp = msg.header.stamp
-    for status in msg.status: 
+    for status in msg.status:
         assert isinstance(status, DiagnosticStatus)
         if "Network Usage" in status.name:
             extract_network_usage(status.values, stamp)
@@ -45,7 +45,6 @@ def extract_network_usage(values: List[KeyValue], stamp: Time):
     for value in values:
         assert isinstance(value, KeyValue)
         if not read_usage:
-            
             if "Interface Name" in value.key and NETWORK_DEVICE in value.value:
                 read_usage = True
         else:
@@ -65,7 +64,7 @@ def extract_cpu_temperature(values: List[KeyValue], stamp: Time):
         if "Temperature" in value.key:
             add_measurement(M_CPU_TEMP, float(value.value[:-4]), stamp)
             return
-        
+
 
 def extract_cpu_usage(values: List[KeyValue], stamp: Time):
     for value in values:
@@ -73,7 +72,7 @@ def extract_cpu_usage(values: List[KeyValue], stamp: Time):
         if "Load Average (1min)" in value.key:
             add_measurement(M_CPU_USAGE, float(value.value[:-1]), stamp)
             return
-        
+
 
 def extract_memory_usage(values: List[KeyValue], stamp: Time):
     total_memory = used_memory = None
@@ -84,8 +83,9 @@ def extract_memory_usage(values: List[KeyValue], stamp: Time):
         elif "Used Memory (Physical)" in value.key:
             used_memory = int(value.value[:-1])
         if None not in [total_memory, used_memory]:
-            add_measurement(M_MEMORY_USAGE, used_memory/total_memory*100, stamp)
-            return   
+            add_measurement(M_MEMORY_USAGE, used_memory / total_memory * 100, stamp)
+            return
+
 
 def add_measurement(meas_type: int, value: float, stamp: Time):
     # print(f"{stamp}: {type}={value}")
@@ -96,25 +96,26 @@ def add_measurement(meas_type: int, value: float, stamp: Time):
     measurements[meas_type] = stamp, value
 
     if not None in measurements:
-
-        mean_stamp = int(sum([val[0].to_nsec() for val in measurements])/len(measurements))
+        mean_stamp = int(sum([val[0].to_nsec() for val in measurements]) / len(measurements))
         write_to_csv([mean_stamp] + [val[1] for val in measurements])
         clear_measurements()
 
-def write_to_csv(what: List, mode: str = 'a'):
 
+def write_to_csv(what: List, mode: str = "a"):
     print(what)
 
-    with open('diagnostics.csv', mode, encoding='UTF8') as f:
+    with open("diagnostics.csv", mode, encoding="UTF8") as f:
         writer = csv.writer(f)
         writer.writerow(what)
 
+
 def diagnostics_subscriber():
-    rospy.init_node('diagnostics_subscriber', anonymous=True)
-    rospy.Subscriber('/diagnostics', DiagnosticArray, diagnostics_callback)
+    rospy.init_node("diagnostics_subscriber", anonymous=True)
+    rospy.Subscriber("/diagnostics", DiagnosticArray, diagnostics_callback)
     clear_measurements()
-    write_to_csv(["timestamp", "input_traffic", "output_traffic", "cpu_temp", "cpu_usage", "mem_usage"], mode='w')
+    write_to_csv(["timestamp", "input_traffic", "output_traffic", "cpu_temp", "cpu_usage", "mem_usage"], mode="w")
     rospy.spin()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     diagnostics_subscriber()

@@ -24,15 +24,8 @@ RUN apt-get update \
 COPY src/era_5g_relay_network_application /root/catkin_ws/src/era_5g_relay_network_application
 
 RUN cd /root/catkin_ws/src/era_5g_relay_network_application \
-    && python3 -m pip install -r requirement.txt \
-    && python3 -m pip install .
-
-RUN git clone https://github.com/5G-ERA/era-5g-interface.git \
-    && cd era-5g-interface \
     && python3 -m pip install -r requirements.txt \
-    && ./pants package :: \
-    && cd dist \
-    && python3 -m pip install era_5g_interface-0.3.0-py3-none-any.whl
+    && python3 -m pip install .
 
 COPY docker/network_application/start.sh /root/start.sh
 

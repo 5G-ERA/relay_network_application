@@ -1,20 +1,20 @@
 from typing import Any, Set
 import rospy
-from rosbridge_library.internal.message_conversion import populate_instance, extract_values
+from rosbridge_library.internal.message_conversion import extract_values
 from rosbridge_library.internal import ros_loader
 from socketio import Server
-from threading import Lock
-from era_5g_relay_network_application.dataclasses.packets import MessagePacket, PacketType
+from era_5g_relay_network_application.data.packets import MessagePacket, PacketType
 from dataclasses import asdict
 
-class WorkerResults():
+
+class WorkerResults:
     """
-    Worker object for data processing in standalone variant. Reads 
+    Worker object for data processing in standalone variant. Reads
     data from passed queue, performs detection and returns results using
-    the flask app. 
+    the flask app.
     """
 
-    def __init__(self, topic_name: str, topic_type: str, sio: Server, subscribers: Set, subscribers_lock: Lock, **kw):
+    def __init__(self, topic_name: str, topic_type: str, sio: Server, subscribers: Set, **kw):
         """
         Constructor
 
@@ -24,7 +24,7 @@ class WorkerResults():
         """
 
         super().__init__(**kw)
-        
+
         inst = ros_loader.get_message_instance(topic_type)
         self.pub = rospy.Subscriber(topic_name, type(inst), queue_size=10, callback=self.callback)
         self.inst = inst
@@ -32,14 +32,17 @@ class WorkerResults():
         self.subscribers = subscribers
         self.topic_name = topic_name
         self.topic_type = topic_type
-        self.subscribers_lock = subscribers_lock
 
     def callback(self, data: Any):
         msg = extract_values(data)
-        message = MessagePacket(packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type)
-        with self.subscribers_lock:
-            for s in self.subscribers:
-                self.sio.emit("message", asdict(message), namespace="/results", to=self.sio.manager.sid_from_eio_sid(s, "/results"))
-        
+        message = MessagePacket(
+            packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type
+        )
 
-    
+        for s in self.subscribers:
+            self.sio.emit(
+                "message",
+                asdict(message),
+                namespace="/results",
+                to=self.sio.manager.sid_from_eio_sid(s, "/results"),
+            )
