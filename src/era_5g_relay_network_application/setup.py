@@ -2,15 +2,11 @@
 
 from distutils.core import setup
 
-setup(name='era_5g_relay_network_application',
-      version='0.0.1',
-      description='Standalone variant of object detection NetApp',
-      author='Amy Pond',
-      author_email='amy.pond@tardis.earth',
-      packages=['era_5g_relay_network_application', 'era_5g_relay_network_application.dataclasses'],
-#      entry_points = {
-#              'console_scripts': [
-#                  'era_5g_network_application_template = era_5g_network_application_template.interface:main',                  
-#              ],              
-#          },
-     )
+setup(
+    name="era_5g_relay_network_application",
+    version="0.1.0",
+    description="Relay Network Application",
+    author="Michal Kapinus",
+    author_email="ikapinus@fit.vut.cz",
+    packages=["era_5g_relay_network_application", "era_5g_relay_network_application.data"],
+)

@@ -5,13 +5,15 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
+from typing import Dict, Optional
+import numpy as np
+
 bridge = CvBridge()
-image_buffer = dict()
-output_images_pub = None
+image_buffer: Dict[int, np.ndarray] = dict()
+output_images_pub: Optional[rospy.Publisher] = None
 
 
 def results_callback(msg):
-
     try:
         results = json.loads(msg.data)
     except ValueError:
@@ -53,16 +55,15 @@ def results_callback(msg):
             cv2.LINE_AA,
         )
 
-    assert isinstance(output_images_pub, rospy.Publisher)
+    assert output_images_pub
 
-    output_images_pub.publish(bridge.cv2_to_imgmsg(frame, encoding='bgr8'))
+    output_images_pub.publish(bridge.cv2_to_imgmsg(frame, encoding="bgr8"))
 
 
 def image_callback(image):
-
     global image_buffer
 
-    image_buffer[image.header.stamp.to_nsec()] = bridge.imgmsg_to_cv2(image, desired_encoding='bgr8')
+    image_buffer[image.header.stamp.to_nsec()] = bridge.imgmsg_to_cv2(image, desired_encoding="bgr8")
 
     # make memory of images limited
     ts_to_keep = sorted(list(image_buffer.keys()))[-60:]
@@ -81,7 +82,8 @@ def main():
 
         rospy.spin()
     except rospy.ROSInterruptException as e:
-        rospy.logerr(e)
+        rospy.logerr(str(e))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
