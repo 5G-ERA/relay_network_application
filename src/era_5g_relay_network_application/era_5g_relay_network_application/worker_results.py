@@ -1,5 +1,8 @@
 from typing import Any, Set
-import rospy
+#import rospy
+import rclpy
+from rclpy.node import Node
+
 from rosbridge_library.internal.message_conversion import extract_values
 from rosbridge_library.internal import ros_loader
 from socketio import Server
@@ -14,7 +17,7 @@ class WorkerResults:
     the flask app.
     """
 
-    def __init__(self, topic_name: str, topic_type: str, sio: Server, subscribers: Set, **kw):
+    def __init__(self, topic_name: str, topic_type: str, node: Node, sio: Server, subscribers: Set, **kw):
         """
         Constructor
 
@@ -26,7 +29,8 @@ class WorkerResults:
         super().__init__(**kw)
 
         inst = ros_loader.get_message_instance(topic_type)
-        self.pub = rospy.Subscriber(topic_name, type(inst), queue_size=10, callback=self.callback)
+        self.sub = node.create_subscription(type(inst), topic_name, self.callback, 10)
+        #self.sub = rospy.Subscriber(topic_name, type(inst), queue_size=10, callback=self.callback)
         self.inst = inst
         self.sio = sio
         self.subscribers = subscribers

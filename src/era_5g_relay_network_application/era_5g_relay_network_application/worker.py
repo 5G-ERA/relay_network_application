@@ -1,7 +1,9 @@
 from queue import Empty, Queue
 import logging
 from threading import Event, Thread
-import rospy
+#import rospy
+import rclpy
+from rclpy.node import Node
 from rosbridge_library.internal.message_conversion import populate_instance, FieldTypeMismatchException
 from rosbridge_library.internal import ros_loader
 
@@ -13,7 +15,7 @@ class Worker(Thread):
     the flask app.
     """
 
-    def __init__(self, queue: Queue, topic_name, topic_type, **kw):
+    def __init__(self, queue: Queue, topic_name, topic_type, node: Node, **kw):
         """
         Constructor
 
@@ -26,7 +28,8 @@ class Worker(Thread):
         self.queue: Queue = queue
         self.stop_event = Event()
         inst = ros_loader.get_message_instance(topic_type)
-        self.pub = rospy.Publisher(topic_name, type(inst), queue_size=10)
+        self.pub = node.create_publisher(type(inst), topic_name, 10)
+        #self.pub = rospy.Publisher(topic_name, type(inst), queue_size=10)
         self.inst = inst
 
     def stop(self):

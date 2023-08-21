@@ -52,7 +52,7 @@ def image_callback_websocket(sid, data: Dict):
         return
     topic_name = metadata.get("topic_name")
     if topic_name is None:
-        logging.warn(f"The message is in wrong format")
+        logging.warning(f"The message is in wrong format")
         return
 
     clients = topics_to_clients.get(topic_name, [])

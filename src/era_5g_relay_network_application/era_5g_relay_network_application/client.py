@@ -19,9 +19,16 @@ from era_5g_relay_network_application.utils import (
     load_services_list,
     build_message,
 )
-import rospy
+#import rospy
+import rclpy
+from rclpy.node import Node
+from rclpy.subscription import Subscription
+from rclpy.publisher import Publisher
+from rclpy.time import Time
+import time
+
 from cv_bridge import CvBridge
-from rospy import Publisher, ROSInterruptException
+# from rospy import Publisher, ROSInterruptException
 from functools import partial
 from sensor_msgs.msg import Image
 from era_5g_relay_network_application.data.packets import (
@@ -49,7 +56,6 @@ MIDDLEWARE_TASK_ID = os.getenv("MIDDLEWARE_TASK_ID", "00000000-0000-0000-0000-00
 # middleware robot id (robot id)
 MIDDLEWARE_ROBOT_ID = os.getenv("MIDDLEWARE_ROBOT_ID", "00000000-0000-0000-0000-000000000000")
 
-
 bridge = CvBridge()
 client: Optional[NetAppClientBase] = None
 
@@ -58,6 +64,8 @@ results_publishers: Dict[str, Publisher] = dict()
 services_results: Dict[str, Dict] = dict()
 
 logger: Optional[logging.Logger] = None
+
+node: Optional[Node] = None
 
 
 def callback_image(data: Image, topic_name=None, topic_type=None):
@@ -70,7 +78,7 @@ def callback_image(data: Image, topic_name=None, topic_type=None):
     cv_image = bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
     client.send_image_ws(
         cv_image,
-        data.header.stamp.to_nsec(),
+        Time.from_msg(data.header.stamp).nanoseconds,
         metadata={"topic_name": topic_name, "topic_type": topic_type},  # TODO fix type annotation in send_image_ws?
     )
 
@@ -115,7 +123,8 @@ def results(data: Union[Dict, str]) -> None:
         # print((rospy.Time.now().to_nsec()-d["timestamp"])/10**9)
 
         if pub is None:
-            pub = rospy.Publisher(msg_packet.topic_name, type(inst), queue_size=10)
+            pub = node.create_publisher(type(inst), msg_packet.topic_name, 10)
+            #pub = rospy.Publisher(msg_packet.topic_name, type(inst), queue_size=10)
             results_publishers[msg_packet.topic_name] = pub
         pub.publish(populate_instance(msg_packet.data, inst))
     elif packet_type == PacketType.SERVICE_RESPONSE:
@@ -123,10 +132,10 @@ def results(data: Union[Dict, str]) -> None:
         inst = ros_loader.get_service_response_instance(packet.service_type)
         services_results[packet.id] = populate_instance(packet.data, inst)
     else:
-        logger.warn(f"Unknown packet type {packet_type}")
+        logger.warning(f"Unknown packet type {packet_type}")
 
 
-def callback_service(req, service_name: str, service_type: str) -> Dict:
+def callback_service(req, resp, service_name: str, service_type: str) -> Dict:
     assert logger
     assert client
 
@@ -149,13 +158,17 @@ def callback_service(req, service_name: str, service_type: str) -> Dict:
 # TODO: timeout?
 def wait_for_service_response(id: str) -> Dict[str, Any]:
     while id not in services_results:
-        rospy.sleep(0.01)
+        time.sleep(0.01)
 
     return services_results.pop(id)
 
 
-def main() -> None:
-    rospy.init_node("relay_client", anonymous=True)
+def main(args=None) -> None:
+    # rospy.init_node("relay_client", anonymous=True)
+    rclpy.init(args=args)
+    global node
+    node = rclpy.create_node("relay_client")
+
     global logger
     importlib.reload(logging)  # HACK to use python logging instead of ros logging
     logging.basicConfig()
@@ -170,20 +183,21 @@ def main() -> None:
         return
 
     global client
-    subs: List[rospy.Subscriber] = []
+    subs: List[Subscription] = []
 
     def signal_handler(sig: int, frame: Optional[FrameType]) -> None:
         assert logger
 
         logger.info(f"Terminating ({signal.Signals(sig).name})...")
-        raise ROSInterruptException()
+        # raise ROSInterruptException()
+        raise KeyboardInterrupt()
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
     if USE_MIDDLEWARE:
         logger.info("The middleware will be used to deploy the relay network application with following settings:")
-        rospy.loginfo(f"{MIDDLEWARE_ADDRESS=}")
+        logger.info(f"{MIDDLEWARE_ADDRESS=}")
         logger.info(f"{MIDDLEWARE_USER=}")
         logger.info(f"{MIDDLEWARE_PASSWORD=}")
         logger.info(f"{MIDDLEWARE_TASK_ID=}")
@@ -225,25 +239,37 @@ def main() -> None:
                     topic_type=topic_type,
                     topic_name=topic_name_remapped,
                 )
-            subs.append(rospy.Subscriber(topic_name, topic_type_class, callback))
+
+            subs.append(node.create_subscription(topic_type_class, topic_name, callback, 10))
+            # subs.append(rospy.Subscriber(topic_name, topic_type_class, callback))
         for service_name, service_type in services:
             service_type_class = ros_loader.get_service_class(service_type)
-            _ = rospy.Service(
-                service_name,
-                service_type_class,
-                partial(
+            node.create_service(
+                service_type_class, service_name, partial(
                     callback_service,
                     service_name=service_name,
                     service_type=service_type,
-                ),
+                )
             )
+            # _ = rospy.Service(
+            #     service_name,
+            #     service_type_class,
+            #     partial(
+            #         callback_service,
+            #         service_name=service_name,
+            #         service_type=service_type,
+            #     ),
+            # )
 
-        while not rospy.is_shutdown():
-            rospy.sleep(1)
+        while rclpy.ok():
+            rclpy.spin_once(node)
+        # while not rospy.is_shutdown():
+        #    rospy.sleep(1)
 
     except FailedToConnect as ex:
         logger.error(f"Failed to connect: {ex}")
-    except (KeyboardInterrupt, ROSInterruptException):
+    # except (KeyboardInterrupt, ROSInterruptException):
+    except KeyboardInterrupt:
         if client is not None:
             client.disconnect()
         exit()

@@ -8,6 +8,10 @@ from cv_bridge import CvBridge
 
 from era_5g_relay_network_application.worker import Worker
 
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from rclpy.time import Time
+
 
 class WorkerImage(Worker):
     """
@@ -16,8 +20,8 @@ class WorkerImage(Worker):
     the flask app.
     """
 
-    def __init__(self, queue: Queue, topic_name, topic_type, **kw):
-        super().__init__(queue, topic_name, topic_type, **kw)
+    def __init__(self, queue: Queue, topic_name, topic_type, node: Node, **kw):
+        super().__init__(queue, topic_name, topic_type, node, **kw)
         self.bridge = CvBridge()
 
     def get_data(self):
@@ -26,9 +30,9 @@ class WorkerImage(Worker):
 
             frame = base64.b64decode(d)
             img = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
-            msg = self.bridge.cv2_to_imgmsg(img, encoding="bgr8")
-            msg.header.stamp.secs = int(ts / 10**9)
-            msg.header.stamp.nsecs = ts % 10**9
+            msg: Image = self.bridge.cv2_to_imgmsg(img, encoding="bgr8")
+            msg.header.stamp = Time(nanoseconds=ts).to_msg()  # .secs = int(ts / 10**9)
+            # msg.header.stamp.nsecs = ts % 10**9
             return msg
         except Empty:
             return None
