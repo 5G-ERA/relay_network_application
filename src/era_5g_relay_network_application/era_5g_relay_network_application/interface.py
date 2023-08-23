@@ -114,7 +114,7 @@ def json_callback_websocket(sid: str, data: Dict[str, Any]):
             without registering first.
     """
     logging.debug(f"client with task id: {sio.manager.eio_sid_from_sid(sid, '/data')} sent data {data}")
-    print(data)
+    #print(data)
     global workers
     packet_type = data.get("packet_type")
     if packet_type == PacketType.MESSAGE:

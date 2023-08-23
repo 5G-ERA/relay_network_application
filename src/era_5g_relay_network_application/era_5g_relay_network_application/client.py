@@ -19,7 +19,7 @@ from era_5g_relay_network_application.utils import (
     load_services_list,
     build_message,
 )
-#import rospy
+# import rospy
 import rclpy
 from rclpy.node import Node
 from rclpy.subscription import Subscription
@@ -75,12 +75,15 @@ def callback_image(data: Image, topic_name=None, topic_type=None):
     if topic_name is None or topic_type is None:
         logger.error("You need to specify topic name and type!")
         return
-    cv_image = bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
-    client.send_image_ws(
-        cv_image,
-        Time.from_msg(data.header.stamp).nanoseconds,
-        metadata={"topic_name": topic_name, "topic_type": topic_type},  # TODO fix type annotation in send_image_ws?
-    )
+    cv_image: Image = bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
+    if cv_image is not None:
+        client.send_image_ws(
+            cv_image,
+            Time.from_msg(data.header.stamp).nanoseconds,
+            metadata={"topic_name": topic_name, "topic_type": topic_type},  # TODO fix type annotation in send_image_ws?
+        )
+    else:
+        logger.warning("Empty image received!")
 
 
 def callback_others(data: Any, topic_name=None, topic_type=None):
@@ -124,7 +127,7 @@ def results(data: Union[Dict, str]) -> None:
 
         if pub is None:
             pub = node.create_publisher(type(inst), msg_packet.topic_name, 10)
-            #pub = rospy.Publisher(msg_packet.topic_name, type(inst), queue_size=10)
+            # pub = rospy.Publisher(msg_packet.topic_name, type(inst), queue_size=10)
             results_publishers[msg_packet.topic_name] = pub
         pub.publish(populate_instance(msg_packet.data, inst))
     elif packet_type == PacketType.SERVICE_RESPONSE:
@@ -227,7 +230,8 @@ def main(args=None) -> None:
                 topic_name_remapped = topic_name
 
             topic_type_class = ros_loader.get_message_class(topic_type)
-            if topic_type == "sensor_msgs/Image":
+            logger.info(f"Topic class is {topic_type_class}")
+            if topic_type_class == Image:
                 callback = partial(
                     callback_image,
                     topic_type=topic_type,
