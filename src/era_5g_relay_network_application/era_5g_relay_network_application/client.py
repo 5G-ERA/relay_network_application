@@ -67,7 +67,7 @@ def callback_image(data: Image, topic_name=None, topic_type=None):
     if topic_name is None or topic_type is None:
         logger.error("You need to specify topic name and type!")
         return
-    cv_image = bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
+    cv_image = bridge.imgmsg_to_cv2(data, desired_encoding="rgb8")
     client.send_image_ws(
         cv_image,
         data.header.stamp.to_nsec(),
