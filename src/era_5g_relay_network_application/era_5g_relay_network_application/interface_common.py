@@ -1,16 +1,13 @@
-from collections.abc import Iterator
 import os
+from collections.abc import Iterator
+from threading import Lock
+from typing import Dict, Set
 
 import socketio
-
-from typing import Dict, Set
+from engineio.payload import Payload
 from flask import Flask
 
-from engineio.payload import Payload
-
 from era_5g_interface.dataclasses.control_command import ControlCommand, ControlCmdType
-
-from threading import Lock
 
 # port of the netapp's server
 NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
@@ -19,7 +16,7 @@ NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 Payload.max_decode_packets = 50
 
 # the max_http_buffer_size parameter defines the max size of the message to be passed
-sio = socketio.Server(async_mode="threading", max_http_buffer_size=5 * (1024**2))
+sio = socketio.Server(async_mode="threading", max_http_buffer_size=5 * (1024 ** 2))
 app = Flask(__name__)
 app.wsgi_app = socketio.WSGIApp(sio, app.wsgi_app)  # type: ignore
 
@@ -100,7 +97,7 @@ def connect_control(sid, environ):
             without registering first.
     """
 
-    print(f"Connected control. Session id: {sio.manager.eio_sid_from_sid(sid, '/data')}, namespace_id: {sid}")
+    print(f"Connected control. Session id: {sio.manager.eio_sid_from_sid(sid, '/control')}, namespace_id: {sid}")
     sio.send("you are connected", namespace="/control", to=sid)
 
 
@@ -114,15 +111,27 @@ def connect_results(sid, environ):
             without registering first.
     """
 
-    print(f"Connected results. Session id: {sio.manager.eio_sid_from_sid(sid, '/data')}, namespace_id: {sid}")
+    print(f"Connected results. Session id: {sio.manager.eio_sid_from_sid(sid, '/results')}, namespace_id: {sid}")
     sio.send("You are connected", namespace="/results", to=sid)
 
 
 @sio.on("command", namespace="/control")
 def command_callback_websocket(sid, data: Dict):
-    command = ControlCommand(**data)
-    # check if the client wants to receive results
-    if command and command.cmd_type == ControlCmdType.SET_STATE:
+    eio_sid = sio.manager.eio_sid_from_sid(sid, '/control')
+    try:
+        command = ControlCommand(**data)
+    except TypeError as e:
+        print(f"Could not parse Control Command. {str(e)}")
+        sio.emit(
+            "control_cmd_error",
+            {"error": f"Could not parse Control Command. {str(e)}"},
+            namespace='/control',
+            to=sid
+        )
+        return
+
+    print(f"Control command {command} processing: session id: {sid}")  # check if the client wants to receive results
+    if command and command.cmd_type == ControlCmdType.INIT:
         args = command.data
         if args:
             sr = args.get("subscribe_results")

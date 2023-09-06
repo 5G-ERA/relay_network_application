@@ -1,18 +1,15 @@
 import json
 import logging
 import os
-
 from typing import Any, Dict, List, FrozenSet
 
 from era_5g_client.client_base import NetAppClientBase
-
 from era_5g_relay_network_application.data.packets import (
     MessagePacket,
     ServiceRequestPacket,
     ServiceResponsePacket,
     PacketType,
 )
-
 from era_5g_relay_network_application.interface_common import sio, app, NETAPP_PORT, result_subscribers
 
 relay_clients: FrozenSet[NetAppClientBase] = frozenset()
@@ -24,7 +21,7 @@ response_id_to_sid: Dict[str, str] = dict()
 
 def get_clients(packet: MessagePacket):
     if not packet.topic_name:
-        logging.warn(f"The message is in wrong format: ")
+        logging.warning(f"The message is in wrong format: ")
         return
 
     clients = topics_to_clients.get(packet.topic_name, [])

@@ -1,23 +1,28 @@
 import json
-import rospy
-import cv2
-from std_msgs.msg import String
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
-
+import sys
 from typing import Dict, Optional
+
+import cv2
 import numpy as np
+import rclpy
+from cv_bridge import CvBridge
+from rclpy.node import Node
+from rclpy.publisher import Publisher
+from sensor_msgs.msg import Image
+from std_msgs.msg import String
 
 bridge = CvBridge()
 image_buffer: Dict[int, np.ndarray] = dict()
-output_images_pub: Optional[rospy.Publisher] = None
+output_images_pub: Optional[Publisher] = None
+
+node: Optional[Node] = None
 
 
 def results_callback(msg):
     try:
         results = json.loads(msg.data)
     except ValueError:
-        rospy.logerr(f"Results should contain JSON data.")
+        node.get_logger().error(f"Results should contain JSON data.")
         raise
 
     assert isinstance(results["timestamp"], int)
@@ -27,13 +32,14 @@ def results_callback(msg):
         image_buffer.pop(frame_to_remove)
 
     if not results["timestamp"]:
-        rospy.signal_shutdown("Timestamp is zero. Something is wrong.")
+        node.get_logger().error("Timestamp is zero. Something is wrong.")
+        rclpy.shutdown()
         return
 
     try:
         frame = image_buffer.pop(results["timestamp"])
     except KeyError as ex:
-        rospy.logerr(f"Frame with timestamp {ex} not found.")
+        node.get_logger().error(f"Frame with timestamp {ex} not found.")
         return
 
     detections = results["detections"]
@@ -70,19 +76,28 @@ def image_callback(image):
     image_buffer = {key: value for key, value in image_buffer.items() if key in ts_to_keep}
 
 
-def main():
+def main(args=None) -> None:
     global output_images_pub
 
+    rclpy.init(args=args)
+    global node
+    node = rclpy.create_node("detection_viewer")
+
     try:
-        rospy.init_node("detection_viewer")
+        input_images_sub = node.create_subscription(Image, "input_images", image_callback, 10)
+        results_sub = node.create_subscription(String, "results", results_callback, 10)
+        output_images_pub = node.create_publisher(Image, "output_images", 10)
 
-        input_images_sub = rospy.Subscriber("input_images", Image, image_callback)
-        results_sub = rospy.Subscriber("results", String, results_callback)
-        output_images_pub = rospy.Publisher("output_images", Image, queue_size=10)
+        while rclpy.ok():
+            rclpy.spin_once(node)
 
-        rospy.spin()
-    except rospy.ROSInterruptException as e:
-        rospy.logerr(str(e))
+    except KeyboardInterrupt:
+        pass
+    except BaseException:
+        print('Exception:', file=sys.stderr)
+        raise
+    finally:
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

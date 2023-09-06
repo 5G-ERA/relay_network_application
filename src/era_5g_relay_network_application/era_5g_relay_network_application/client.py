@@ -1,43 +1,45 @@
-import importlib
-import os
 import logging
+import os
 import signal
+import sys
+import time
+import uuid
+from dataclasses import asdict
+from functools import partial
 from types import FrameType
 from typing import Any, Dict, Optional, List, Union
-import uuid
-from era_5g_client.exceptions import FailedToConnect
-from era_5g_client.client_base import NetAppClientBase
-from era_5g_client.dataclasses import MiddlewareInfo
-from era_5g_client.client import NetAppClient
+
+import rclpy
+from cv_bridge import CvBridge
+from rclpy.node import Node
+from rclpy.publisher import Publisher
+from rclpy.subscription import Subscription
+from rclpy.time import Time
+from rosbridge_library.internal import ros_loader
 from rosbridge_library.internal.message_conversion import (
     extract_values,
     populate_instance,
 )
-from rosbridge_library.internal import ros_loader
-from era_5g_relay_network_application.utils import (
-    load_topic_list,
-    load_services_list,
-    build_message,
-)
-# import rospy
-import rclpy
-from rclpy.node import Node
-from rclpy.subscription import Subscription
-from rclpy.publisher import Publisher
-from rclpy.time import Time
-import time
-
-from cv_bridge import CvBridge
-# from rospy import Publisher, ROSInterruptException
-from functools import partial
 from sensor_msgs.msg import Image
+
+from era_5g_client.client import NetAppClient
+from era_5g_client.client_base import NetAppClientBase
+from era_5g_client.dataclasses import MiddlewareInfo
+from era_5g_client.exceptions import FailedToConnect
 from era_5g_relay_network_application.data.packets import (
     MessagePacket,
     ServiceRequestPacket,
     ServiceResponsePacket,
     PacketType,
 )
-from dataclasses import asdict
+from era_5g_relay_network_application.utils import (
+    load_topic_list,
+    load_services_list,
+    build_message,
+)
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger("relay client python")
 
 # defines if the middleware is used for deployment of relay netapp
 # if true, the address, user, password, task_id and robot_id needs to be specified
@@ -63,13 +65,10 @@ results_publishers: Dict[str, Publisher] = dict()
 
 services_results: Dict[str, Dict] = dict()
 
-logger: Optional[logging.Logger] = None
-
 node: Optional[Node] = None
 
 
 def callback_image(data: Image, topic_name=None, topic_type=None):
-    assert logger
     assert client
 
     if topic_name is None or topic_type is None:
@@ -87,7 +86,6 @@ def callback_image(data: Image, topic_name=None, topic_type=None):
 
 
 def callback_others(data: Any, topic_name=None, topic_type=None):
-    assert logger
     assert client
 
     if topic_name is None or topic_type is None:
@@ -106,8 +104,6 @@ def callback_others(data: Any, topic_name=None, topic_type=None):
 
 
 def results(data: Union[Dict, str]) -> None:
-    assert logger
-
     # TODO: not sure why does client get here status messages like "you are connected" - is it intentional?
     if not isinstance(data, dict):
         return
@@ -127,7 +123,6 @@ def results(data: Union[Dict, str]) -> None:
 
         if pub is None:
             pub = node.create_publisher(type(inst), msg_packet.topic_name, 10)
-            # pub = rospy.Publisher(msg_packet.topic_name, type(inst), queue_size=10)
             results_publishers[msg_packet.topic_name] = pub
         pub.publish(populate_instance(msg_packet.data, inst))
     elif packet_type == PacketType.SERVICE_RESPONSE:
@@ -139,7 +134,6 @@ def results(data: Union[Dict, str]) -> None:
 
 
 def callback_service(req, resp, service_name: str, service_type: str) -> Dict:
-    assert logger
     assert client
 
     assert service_name
@@ -167,19 +161,15 @@ def wait_for_service_response(id: str) -> Dict[str, Any]:
 
 
 def main(args=None) -> None:
-    # rospy.init_node("relay_client", anonymous=True)
     rclpy.init(args=args)
     global node
     node = rclpy.create_node("relay_client")
-
-    global logger
-    importlib.reload(logging)  # HACK to use python logging instead of ros logging
-    logging.basicConfig()
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
+    node.get_logger().set_level(logging.DEBUG)
 
     topics = load_topic_list()
     services = load_services_list()
+
+    node.get_logger().debug(f"Loaded topics: {topics}")
 
     if not (topics or services):
         print("Specify at least one topic or service.")
@@ -192,7 +182,6 @@ def main(args=None) -> None:
         assert logger
 
         logger.info(f"Terminating ({signal.Signals(sig).name})...")
-        # raise ROSInterruptException()
         raise KeyboardInterrupt()
 
     signal.signal(signal.SIGTERM, signal_handler)
@@ -245,7 +234,6 @@ def main(args=None) -> None:
                 )
 
             subs.append(node.create_subscription(topic_type_class, topic_name, callback, 10))
-            # subs.append(rospy.Subscriber(topic_name, topic_type_class, callback))
         for service_name, service_type in services:
             service_type_class = ros_loader.get_service_class(service_type)
             node.create_service(
@@ -255,28 +243,21 @@ def main(args=None) -> None:
                     service_type=service_type,
                 )
             )
-            # _ = rospy.Service(
-            #     service_name,
-            #     service_type_class,
-            #     partial(
-            #         callback_service,
-            #         service_name=service_name,
-            #         service_type=service_type,
-            #     ),
-            # )
 
         while rclpy.ok():
             rclpy.spin_once(node)
-        # while not rospy.is_shutdown():
-        #    rospy.sleep(1)
 
     except FailedToConnect as ex:
         logger.error(f"Failed to connect: {ex}")
-    # except (KeyboardInterrupt, ROSInterruptException):
     except KeyboardInterrupt:
         if client is not None:
             client.disconnect()
-        exit()
+        pass
+    except BaseException:
+        print('Exception:', file=sys.stderr)
+        raise
+    finally:
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

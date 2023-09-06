@@ -1,35 +1,35 @@
 import binascii
-from dataclasses import asdict
-from era_5g_relay_network_application.utils import load_topic_list
 import logging
+import sys
+import threading
 import time
+from dataclasses import asdict
+from queue import Full, Queue
+from typing import Optional, Any, Dict
+
+import rclpy
+from rclpy.node import Node
 from rosbridge_library.internal import ros_loader
 from rosbridge_library.internal.message_conversion import (
     populate_instance,
     extract_values,
 )
+
 from era_5g_relay_network_application.data.packets import (
     MessagePacket,
     ServiceRequestPacket,
     ServiceResponsePacket,
     PacketType,
 )
-
-from queue import Full, Queue
-
-from typing import Optional, Any, Dict
-
-
+from era_5g_relay_network_application.interface_common import sio, app, NETAPP_PORT, result_subscribers
+from era_5g_relay_network_application.utils import load_topic_list
 from era_5g_relay_network_application.worker import Worker
 from era_5g_relay_network_application.worker_image import WorkerImage
 from era_5g_relay_network_application.worker_results import WorkerResults
 
-#import rospy
-import rclpy
-from rclpy.node import Node
-
-from era_5g_relay_network_application.interface_common import sio, app, NETAPP_PORT, result_subscribers
-
+# Set logging
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger("relay interface python")
 
 workers: Dict[str, Worker] = dict()
 
@@ -114,7 +114,6 @@ def json_callback_websocket(sid: str, data: Dict[str, Any]):
             without registering first.
     """
     logging.debug(f"client with task id: {sio.manager.eio_sid_from_sid(sid, '/data')} sent data {data}")
-    #print(data)
     global workers
     packet_type = data.get("packet_type")
     if packet_type == PacketType.MESSAGE:
@@ -135,13 +134,10 @@ def json_callback_websocket(sid: str, data: Dict[str, Any]):
     elif packet_type == PacketType.SERVICE_REQUEST:
         packet = ServiceRequestPacket(**data)
         proxy = node.create_client(ros_loader.get_service_class(packet.service_type), packet.service_name)
-        #proxy = rospy.ServiceProxy(packet.service_name, ros_loader.get_service_class(packet.service_type))
         inst = ros_loader.get_service_request_instance(packet.service_type)
         # Populate the instance with the provided args
-        #res = proxy.call(populate_instance(packet.data, inst))
-
         while not proxy.wait_for_service(timeout_sec=1.0):
-            node.get_logger().info('service not available, waiting again...')
+            node.get_logger().info('Service is not available, waiting again...')
         resp = proxy.call_async(populate_instance(packet.data, inst))
         rclpy.spin_until_future_complete(node, resp)
 
@@ -164,15 +160,20 @@ def json_callback_websocket(sid: str, data: Dict[str, Any]):
 def main(args=None) -> None:
     topics = load_topic_list()
 
-    logging.getLogger().setLevel(logging.DEBUG)
-
-    #rospy.init_node("relay_netapp", anonymous=True, disable_signals=True)
     rclpy.init(args=args)
     global node
     node = rclpy.create_node("relay_netapp")
+    node.get_logger().set_level(logging.DEBUG)
+    node.get_logger().debug(f"Loaded topics: {topics}")
+
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(node)
 
     for topic_name, _, topic_type in topics:
         _ = WorkerResults(topic_name, topic_type, node, sio, result_subscribers)
+
+    executor_thread = threading.Thread(target=executor.spin, daemon=True)
+    executor_thread.start()
 
     # runs the flask server
     # allow_unsafe_werkzeug needs to be true to run inside the docker

@@ -1,11 +1,10 @@
-from queue import Empty, Queue
 import logging
+from queue import Empty, Queue
 from threading import Event, Thread
-#import rospy
-import rclpy
+
 from rclpy.node import Node
-from rosbridge_library.internal.message_conversion import populate_instance, FieldTypeMismatchException
 from rosbridge_library.internal import ros_loader
+from rosbridge_library.internal.message_conversion import populate_instance, FieldTypeMismatchException
 
 
 class Worker(Thread):
@@ -29,7 +28,6 @@ class Worker(Thread):
         self.stop_event = Event()
         inst = ros_loader.get_message_instance(topic_type)
         self.pub = node.create_publisher(type(inst), topic_name, 10)
-        #self.pub = rospy.Publisher(topic_name, type(inst), queue_size=10)
         self.inst = inst
 
     def stop(self):
@@ -42,7 +40,7 @@ class Worker(Thread):
         except Empty:
             return None
         except FieldTypeMismatchException:
-            logging.warn("Failed to convert message")
+            logging.warning("Failed to convert message")
             return None
 
     def run(self):
