@@ -26,7 +26,7 @@ class WorkerImage(Worker):
 
             frame = base64.b64decode(d)
             img = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
-            msg = self.bridge.cv2_to_imgmsg(img, encoding="bgr8")
+            msg = self.bridge.cv2_to_imgmsg(img, encoding="rgb8")
             msg.header.stamp.secs = int(ts / 10**9)
             msg.header.stamp.nsecs = ts % 10**9
             return msg

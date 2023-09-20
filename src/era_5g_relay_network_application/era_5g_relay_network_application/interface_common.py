@@ -100,7 +100,7 @@ def connect_control(sid, environ):
             without registering first.
     """
 
-    print(f"Connected control. Session id: {sio.manager.eio_sid_from_sid(sid, '/data')}, namespace_id: {sid}")
+    print(f"Connected control. Session id: {sio.manager.eio_sid_from_sid(sid, '/control')}, namespace_id: {sid}")
     sio.send("you are connected", namespace="/control", to=sid)
 
 
@@ -114,7 +114,7 @@ def connect_results(sid, environ):
             without registering first.
     """
 
-    print(f"Connected results. Session id: {sio.manager.eio_sid_from_sid(sid, '/data')}, namespace_id: {sid}")
+    print(f"Connected results. Session id: {sio.manager.eio_sid_from_sid(sid, '/results')}, namespace_id: {sid}")
     sio.send("You are connected", namespace="/results", to=sid)
 
 
@@ -122,7 +122,7 @@ def connect_results(sid, environ):
 def command_callback_websocket(sid, data: Dict):
     command = ControlCommand(**data)
     # check if the client wants to receive results
-    if command and command.cmd_type == ControlCmdType.SET_STATE:
+    if command and command.cmd_type == ControlCmdType.INIT:
         args = command.data
         if args:
             sr = args.get("subscribe_results")
