@@ -42,8 +42,8 @@ def image_callback_websocket(sid, data: dict):
     Allows to receive jpg-encoded image using the websocket transport
 
     Args:
-        data (dict): A base64 encoded image frame and (optionally) related timestamp in format:
-            {'frame': 'base64data', 'timestamp': 'int'}
+        data (dict): An encoded image frame and (optionally) related timestamp in format:
+            {'frame': 'bytes', 'timestamp': 'int'}
 
     Raises:
         ConnectionRefusedError: Raised when attempt for connection were made
