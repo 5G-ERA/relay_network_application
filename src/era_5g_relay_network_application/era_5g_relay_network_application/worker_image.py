@@ -1,4 +1,3 @@
-import base64
 from queue import Empty, Queue
 import cv2
 
@@ -24,8 +23,7 @@ class WorkerImage(Worker):
         try:
             d, ts = self.queue.get(block=True, timeout=1)
 
-            frame = base64.b64decode(d)
-            img = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
+            img = cv2.imdecode(np.frombuffer(d, dtype=np.uint8), cv2.IMREAD_COLOR)
             msg = self.bridge.cv2_to_imgmsg(img, encoding="rgb8")
             msg.header.stamp.secs = int(ts / 10**9)
             msg.header.stamp.nsecs = ts % 10**9
