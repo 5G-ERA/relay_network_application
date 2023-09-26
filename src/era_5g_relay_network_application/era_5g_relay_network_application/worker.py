@@ -1,10 +1,13 @@
 import logging
 from queue import Empty, Queue
 from threading import Event, Thread
+import time
 
 from rclpy.node import Node
 from rosbridge_library.internal import ros_loader
 from rosbridge_library.internal.message_conversion import populate_instance, FieldTypeMismatchException
+
+from sensor_msgs.msg import LaserScan
 
 
 class Worker(Thread):
@@ -27,7 +30,7 @@ class Worker(Thread):
         self.queue: Queue = queue
         self.stop_event = Event()
         inst = ros_loader.get_message_instance(topic_type)
-        self.pub = node.create_publisher(type(inst), topic_name, 10)
+        self.pub = node.create_publisher(type(inst), topic_name, 1)
         self.inst = inst
 
     def stop(self):
@@ -36,11 +39,13 @@ class Worker(Thread):
     def get_data(self):
         try:
             d = self.queue.get(block=True, timeout=1)
+            if type(self.inst) == LaserScan:
+                d["ranges"][:] = [x if x is not None else float('inf') for x in d["ranges"]]
             return populate_instance(d, self.inst)
         except Empty:
             return None
-        except FieldTypeMismatchException:
-            logging.warning("Failed to convert message")
+        except (FieldTypeMismatchException, TypeError) as ex:            
+            logging.warning(f"Failed to convert message: {ex}")
             return None
 
     def run(self):
