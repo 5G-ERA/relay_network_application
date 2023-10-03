@@ -245,7 +245,7 @@ def main(args=None) -> None:
             )
 
         while rclpy.ok():
-            rclpy.spin_once(node)
+            rclpy.spin_once(node, timeout_sec=1.0)
 
     except FailedToConnect as ex:
         logger.error(f"Failed to connect: {ex}")

@@ -89,7 +89,7 @@ def main(args=None) -> None:
         output_images_pub = node.create_publisher(Image, "output_images", 10)
 
         while rclpy.ok():
-            rclpy.spin_once(node)
+            rclpy.spin_once(node, timeout_sec=1.0)
 
     except KeyboardInterrupt:
         pass
