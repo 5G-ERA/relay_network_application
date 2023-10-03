@@ -5,8 +5,8 @@ import uuid
 from typing import List, Tuple, Optional, Dict
 
 
-def load_topic_list() -> List[Tuple[str, Optional[str], str]]:
-    topic_list = os.getenv("TOPIC_LIST")
+def load_topic_list(env_name: str = "TOPIC_LIST") -> List[Tuple[str, Optional[str], str]]:
+    topic_list = os.getenv(env_name)
     if topic_list is None:
         return []
     topic_data = json.loads(topic_list)
@@ -21,8 +21,8 @@ def load_topic_list() -> List[Tuple[str, Optional[str], str]]:
     return topics
 
 
-def load_services_list() -> List[Tuple[str, str]]:
-    service_list = os.getenv("SERVICE_LIST")
+def load_services_list(env_name: str = "SERVICE_LIST") -> List[Tuple[str, str]]:
+    service_list = os.getenv(env_name)
     if service_list is None:
         return []
     service_data = json.loads(service_list)
