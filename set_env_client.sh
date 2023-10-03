@@ -13,7 +13,8 @@ source /opt/ros/humble/setup.sh
 # Export NetApp address of interface
 #export NETAPP_ADDRESS=http://127.0.0.1:5896
 # Devel test server
-export NETAPP_ADDRESS=http://192.168.206.50:5896
+export NETAPP_ADDRESS=http://192.168.206.50:5897
 
 # Set TOPIC_LIST environment variable (input, images)
-export TOPIC_LIST="[{\"topic_name\":\"/image_raw\",\"topic_type\":\"sensor_msgs/Image\"}]"
+export TOPIC_LIST='[{"topic_name":"/image_raw","topic_type":"sensor_msgs/Image"}]'
+export SERVICE_LIST='[{"service_name":"/fcw_service_node/set_parameters_atomically","service_type":"rcl_interfaces/srv/SetParametersAtomically"}]'

@@ -10,7 +10,7 @@ source /opt/ros/foxy/setup.sh
 #export ROS_DOMAIN_ID=1
 
 # Export NetApp port of interface
-#export NETAPP_PORT=5896
+export NETAPP_PORT=5897
 
 # Set TOPIC_LIST environment variable (results, string)
-export TOPIC_LIST="[{\"topic_name\":\"/res\",\"topic_type\":\"std_msgs/String\"}]"
+export TOPIC_LIST='[{"topic_name":"/res","topic_type":"std_msgs/String"}]'

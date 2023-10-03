@@ -9,6 +9,7 @@ from typing import Optional, Any, Dict
 
 import rclpy
 from rclpy.node import Node
+from rclpy.task import Future
 from rosbridge_library.internal import ros_loader
 from rosbridge_library.internal.message_conversion import (
     populate_instance,
@@ -107,6 +108,7 @@ def json_callback_websocket(sid: str, data: Dict[str, Any]):
     Allows to receive general json data using the websocket transport
 
     Args:
+        sid ():
         data (dict): NetApp-specific json data
 
     Raises:
@@ -138,10 +140,10 @@ def json_callback_websocket(sid: str, data: Dict[str, Any]):
         # Populate the instance with the provided args
         while not proxy.wait_for_service(timeout_sec=1.0):
             node.get_logger().info('Service is not available, waiting again...')
-        resp = proxy.call_async(populate_instance(packet.data, inst))
-        rclpy.spin_until_future_complete(node, resp)
+        future: Future = proxy.call_async(populate_instance(packet.data, inst))
+        rclpy.spin_until_future_complete(node, future)
 
-        d = extract_values(resp)
+        d = extract_values(future.result())
         message = ServiceResponsePacket(
             packet_type=PacketType.SERVICE_RESPONSE,
             data=d,
