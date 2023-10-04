@@ -1,5 +1,3 @@
-
-
 import os
 import threading
 import rclpy
@@ -9,12 +7,8 @@ from multiprocessing import Queue
 from queue import Full
 import time
 from typing import Any, Dict
-from era_5g_relay_network_application.data.packets import (
-    MessagePacket, 
-    PacketType, 
-    ServiceRequestPacket
-)
-from era_5g_relay_network_application.interface_common_class import RelayInterfaceCommon
+from era_5g_relay_network_application.data.packets import MessagePacket, PacketType, ServiceRequestPacket
+from era_5g_relay_network_application.interface_common import RelayInterfaceCommon
 
 from era_5g_relay_network_application.worker_image import WorkerImage
 from era_5g_relay_network_application.worker import Worker
@@ -28,9 +22,18 @@ from era_5g_relay_network_application.worker_service import WorkerService
 # port of the netapp's server
 NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 
+
 class RelayInterface(RelayInterfaceCommon):
-    def __init__(self, port: int, workers: Dict[str, Worker], results_queue: Queue, 
-                 services_requests_queue: Queue, services_responses_queue: Queue, *args, **kwargs) -> None:
+    def __init__(
+        self,
+        port: int,
+        workers: Dict[str, Worker],
+        results_queue: Queue,
+        services_requests_queue: Queue,
+        services_responses_queue: Queue,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(port, *args, **kwargs)
         self.node = None
         self.sio.on("image", self.image_callback_websocket, namespace="/data")
@@ -47,7 +50,6 @@ class RelayInterface(RelayInterfaceCommon):
         self.worker_service.daemon = True
         self.worker_service.start()
         self.run_server()
-
 
     def image_callback_websocket(self, sid, data: dict):
         """
@@ -90,7 +92,7 @@ class RelayInterface(RelayInterfaceCommon):
             msg = data.get("frame")
             if topic_name is None or topic_type is None:
                 return
-            
+
             try:
                 w: WorkerImage = self.workers.get(topic_name, None)
                 if w is None:
@@ -109,7 +111,6 @@ class RelayInterface(RelayInterfaceCommon):
                 to=sid,
             )
             return
-
 
     def json_callback_websocket(self, sid: str, data: Dict[str, Any]):
         """
@@ -135,16 +136,12 @@ class RelayInterface(RelayInterfaceCommon):
             except Full:
                 pass
             return
-        
+
         elif packet_type == PacketType.SERVICE_REQUEST:
             packet = ServiceRequestPacket(**data)
-            self.services_requests_queue.put_nowait(
-                (self.sio.manager.sid_from_eio_sid(sid, "/results"), packet))
+            self.services_requests_queue.put_nowait((self.sio.manager.sid_from_eio_sid(sid, "/results"), packet))
             return
 
-
-            
-        
 
 def main(args=None) -> None:
     topics_results = load_topic_list()
@@ -166,10 +163,7 @@ def main(args=None) -> None:
         w.daemon = True
         w.start()
         workers[topic_name] = w
-    
-    
 
-    
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(node)
 
@@ -184,14 +178,16 @@ def main(args=None) -> None:
     executor_thread = threading.Thread(target=executor.spin, daemon=True)
     executor_thread.start()
 
-    socketio_process = RelayInterface(NETAPP_PORT, workers, results_queue, services_requests_queue, services_responses_queue)
+    socketio_process = RelayInterface(
+        NETAPP_PORT, workers, results_queue, services_requests_queue, services_responses_queue
+    )
 
     socketio_process.start()
     results_workers = dict()
 
     for topic_name, _, topic_type in topics_results:
         results_workers[topic_name] = WorkerResults(topic_name, topic_type, node, results_queue)
-    
+
     socketio_process.join()
 
     rclpy.shutdown()  # Shutdown rclpy when finished"""
