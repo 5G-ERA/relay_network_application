@@ -6,13 +6,21 @@ import logging
 from multiprocessing import Queue
 from queue import Full
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List
+
+from geometry_msgs.msg import TransformStamped
+from tf2_msgs.msg import TFMessage
+
+from rosbridge_library.internal.message_conversion import extract_values
+
+from era_5g_tf2json.tf2_web_republisher import TFRepublisher
+
 from era_5g_relay_network_application.data.packets import MessagePacket, PacketType, ServiceRequestPacket
 from era_5g_relay_network_application.interface_common import RelayInterfaceCommon
 
 from era_5g_relay_network_application.worker_image import WorkerImage
 from era_5g_relay_network_application.worker import Worker
-from era_5g_relay_network_application.utils import load_topic_list
+from era_5g_relay_network_application.utils import load_topic_list, load_transform_list
 from era_5g_relay_network_application.worker_results import WorkerResults
 from era_5g_relay_network_application.worker_results_socketio import WorkerResultsSocketIO
 from era_5g_relay_network_application.worker_service_socketio import WorkerServiceSocketIO
@@ -146,12 +154,17 @@ class RelayInterface(RelayInterfaceCommon):
 def main(args=None) -> None:
     topics_results = load_topic_list()
     topics_to_publish = load_topic_list("TOPIC_TO_PUB_LIST")
+    transforms_to_listen = load_transform_list()
 
     rclpy.init(args=args)
     node = rclpy.create_node("relay_netapp")
     node.get_logger().set_level(logging.DEBUG)
     node.get_logger().debug(f"Loaded topics for results: {topics_results}")
     node.get_logger().debug(f"Loaded topics for publishing: {topics_to_publish}")
+    node.get_logger().debug(f"Loaded transforms for listening: {transforms_to_listen}")
+
+    # can't know if client will want to send some TFs so we have to create worker for it
+    topics_to_publish.append(("/tf", None, "tf2_msgs/TFMessage"))
 
     workers = dict()
     for topic_name, _, topic_type in topics_to_publish:
@@ -187,6 +200,25 @@ def main(args=None) -> None:
 
     for topic_name, _, topic_type in topics_results:
         results_workers[topic_name] = WorkerResults(topic_name, topic_type, node, results_queue)
+
+    tf_republisher: Optional[TFRepublisher] = None
+
+    def tf_callback(transforms: List[TransformStamped]) -> None:
+        if transforms:
+            message = MessagePacket(
+                packet_type=PacketType.MESSAGE,
+                data=extract_values(TFMessage(transforms=transforms)),
+                topic_name="/tf",
+                topic_type="tf2_msgs/TFMessage",
+            )
+
+            results_queue.put_nowait(message)
+
+    if transforms_to_listen:
+        tf_republisher = TFRepublisher(node, tf_callback)
+        for tr in transforms_to_listen:
+            node.get_logger().info(f"Subscribing for: {tr}")
+            tf_republisher.subscribe_transform(*tr)
 
     socketio_process.join()
 

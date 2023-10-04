@@ -21,6 +21,10 @@ from rosbridge_library.internal.message_conversion import (
     populate_instance,
 )
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import TransformStamped
+from tf2_msgs.msg import TFMessage
+
+from era_5g_tf2json.tf2_web_republisher import TFRepublisher
 
 from era_5g_client.client import NetAppClient
 from era_5g_client.client_base import NetAppClientBase
@@ -35,7 +39,7 @@ from era_5g_relay_network_application.data.packets import (
 from era_5g_relay_network_application.utils import (
     load_topic_list,
     load_services_list,
-    build_message,
+    load_transform_list,
 )
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -92,11 +96,9 @@ def callback_others(data: Any, topic_name=None, topic_type=None):
         logger.error("You need to specify topic name and type!")
         return
 
-    d = extract_values(data)
-    message = build_message(topic_name, topic_type, d)
     message = MessagePacket(
         packet_type=PacketType.MESSAGE,
-        data=d,
+        data=extract_values(data),
         topic_name=topic_name,
         topic_type=topic_type,
     )
@@ -160,6 +162,19 @@ def wait_for_service_response(id: str) -> Dict[str, Any]:
     return services_results.pop(id)
 
 
+def tf_callback(transforms: List[TransformStamped]) -> None:
+    assert client
+
+    if transforms:
+        message = MessagePacket(
+            packet_type=PacketType.MESSAGE,
+            data=extract_values(TFMessage(transforms=transforms)),
+            topic_name="/tf",
+            topic_type="tf2_msgs/TFMessage",
+        )
+        client.send_json_ws(asdict(message))
+
+
 def main(args=None) -> None:
     rclpy.init(args=args)
     global node
@@ -168,6 +183,7 @@ def main(args=None) -> None:
 
     topics = load_topic_list()
     services = load_services_list()
+    transforms = load_transform_list()
 
     node.get_logger().debug(f"Loaded topics: {topics}")
 
@@ -237,12 +253,22 @@ def main(args=None) -> None:
         for service_name, service_type in services:
             service_type_class = ros_loader.get_service_class(service_type)
             node.create_service(
-                service_type_class, service_name, partial(
+                service_type_class,
+                service_name,
+                partial(
                     callback_service,
                     service_name=service_name,
                     service_type=service_type,
-                )
+                ),
             )
+
+        tf_republisher: Optional[TFRepublisher] = None
+
+        if transforms:
+            tf_republisher = TFRepublisher(node, tf_callback)
+            for tr in transforms:
+                logger.info(f"Subscribing for: {tr}")
+                tf_republisher.subscribe_transform(*tr)
 
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=1.0)
@@ -254,7 +280,7 @@ def main(args=None) -> None:
             client.disconnect()
         pass
     except BaseException:
-        print('Exception:', file=sys.stderr)
+        print("Exception:", file=sys.stderr)
         raise
     finally:
         rclpy.shutdown()

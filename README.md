@@ -18,9 +18,9 @@ The Relay Network Application consists of three parts: Relay Client, Relay Serve
 ### Relay Client
 
 The Relay Client runs on robot and initiates the connection to the Relay Server. For configuration,
-there are two environment variables, TOPIC_LIST and SERVICE_LIST. The former is used to specify the
-topics, which should be mirrored to the remote ROS environment. The later specifies the list of
-remote services, which should be provided to the robot. The variables are specified in JSON format:
+there are three environment variables, `TOPIC_LIST`, `SERVICE_LIST`, and `TRANSFORM_LIST`. The first one is used to specify the
+topics, which should be mirrored to the remote ROS environment. The second specifies the list of
+remote services, which should be provided to the robot and the last one which TF transforms should be listened to. The variables are specified in JSON format:
 
 ```json
 TOPIC_LIST = [
@@ -57,6 +57,20 @@ SERVICE_LIST = [
 
 The `service_name` field specify the name of the remote service, that should be advertised to the robot.
 The `service_type` field contains the textual representation of the service's type, e.g., std_srvs/Trigger.
+
+```json
+TRANSFORM_LIST = [
+  {
+    "source_frame": "map",
+    "target_frame": "robot",
+    "angular_thres": 0.1,
+    "trans_thres": 0.001 
+  }
+]
+```
+
+Thresholds are not mandatory and are set to the example values by default.
+
 
 To set the connection to the Relay Server or Relay Inter, following env variable are used:
 

@@ -5,20 +5,33 @@ import uuid
 from typing import List, Tuple, Optional, Dict
 
 
+def load_transform_list(env_name: str = "TRANSFORM_LIST") -> List[Tuple[str, str, float, float]]:
+    tr_list = os.getenv(env_name)
+    if tr_list is None:
+        return []
+    tr_data = json.loads(tr_list)
+    try:
+        return [
+            (tr["source_frame"], tr["target_frame"], tr.get("angular_thres", 0.1), tr.get("trans_thres", 0.001))
+            for tr in tr_data
+        ]
+    except KeyError:
+        raise ValueError("Wrong format of TRANSFORM_LIST, please see documentation.")
+
+
 def load_topic_list(env_name: str = "TOPIC_LIST") -> List[Tuple[str, Optional[str], str]]:
     topic_list = os.getenv(env_name)
     if topic_list is None:
         return []
     topic_data = json.loads(topic_list)
     try:
-        topics = [
+        return [
             (topic["topic_name"], topic.get("topic_name_remapped", None), topic["topic_type"]) for topic in topic_data
         ]
     except KeyError:
         print("Wrong format of the TOPIC_LIST variable. The correct format is:")
         print_format()
         raise ValueError()
-    return topics
 
 
 def load_services_list(env_name: str = "SERVICE_LIST") -> List[Tuple[str, str]]:
@@ -27,21 +40,11 @@ def load_services_list(env_name: str = "SERVICE_LIST") -> List[Tuple[str, str]]:
         return []
     service_data = json.loads(service_list)
     try:
-        services = [(service["service_name"], service["service_type"]) for service in service_data]
+        return [(service["service_name"], service["service_type"]) for service in service_data]
     except KeyError:
         print("Wrong format of the SERVICE_LIST variable. The correct format is:")
         print_format()
         raise ValueError()
-    return services
-
-
-def build_message(topic_name: str, topic_type: str, msg: str) -> Dict[str, str]:
-    return {
-        "type": "message",
-        "topic_name": topic_name,
-        "topic_type": topic_type,
-        "msg": msg,
-    }  # TODO this should be rather dataclass
 
 
 def build_service_request(service_name: str, service_type: str, req: str) -> Dict[str, str]:

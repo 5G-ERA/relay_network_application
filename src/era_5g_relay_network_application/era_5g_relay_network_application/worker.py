@@ -40,11 +40,11 @@ class Worker(Thread):
         try:
             d = self.queue.get(block=True, timeout=1)
             if type(self.inst) == LaserScan:
-                d["ranges"][:] = [x if x is not None else float('inf') for x in d["ranges"]]
+                d["ranges"][:] = [x if x is not None else float("inf") for x in d["ranges"]]
             return populate_instance(d, self.inst)
         except Empty:
             return None
-        except (FieldTypeMismatchException, TypeError) as ex:            
+        except (FieldTypeMismatchException, TypeError) as ex:
             logging.warning(f"Failed to convert message: {ex}")
             return None
 
