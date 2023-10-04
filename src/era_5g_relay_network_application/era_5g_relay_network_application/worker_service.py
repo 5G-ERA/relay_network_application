@@ -65,7 +65,7 @@ class WorkerService(Thread):
                     id=packet.id,
                 )
                 self.services_responses_queue.put_nowait((sid, message))
-            except (Empty, Full) as _:
+            except (Empty, Full):
                 pass
 
 
