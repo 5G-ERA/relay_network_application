@@ -24,7 +24,6 @@ class WorkerImage(Worker):
     def get_data(self):
         try:
             d, ts = self.queue.get(block=True, timeout=1)
-
             img = cv2.imdecode(np.frombuffer(d, dtype=np.uint8), cv2.IMREAD_COLOR)
             msg: Image = self.bridge.cv2_to_imgmsg(img, encoding="bgr8")
             msg.header.stamp = Time(nanoseconds=ts).to_msg()  # .secs = int(ts / 10**9)

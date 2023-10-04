@@ -1,186 +1,200 @@
+
+
+import os
+import threading
+import rclpy
 import binascii
 import logging
-import sys
-import threading
+from multiprocessing import Queue
+from queue import Full
 import time
-from dataclasses import asdict
-from queue import Full, Queue
-from typing import Optional, Any, Dict
-
-import rclpy
-from rclpy.node import Node
-from rclpy.task import Future
-from rosbridge_library.internal import ros_loader
-from rosbridge_library.internal.message_conversion import (
-    populate_instance,
-    extract_values,
-)
-
+from typing import Any, Dict
 from era_5g_relay_network_application.data.packets import (
-    MessagePacket,
-    ServiceRequestPacket,
-    ServiceResponsePacket,
-    PacketType,
+    MessagePacket, 
+    PacketType, 
+    ServiceRequestPacket
 )
-from era_5g_relay_network_application.interface_common import sio, app, NETAPP_PORT, result_subscribers
-from era_5g_relay_network_application.utils import load_topic_list
-from era_5g_relay_network_application.worker import Worker
+from era_5g_relay_network_application.interface_common_class import RelayInterfaceCommon
+
 from era_5g_relay_network_application.worker_image import WorkerImage
+from era_5g_relay_network_application.worker import Worker
+from era_5g_relay_network_application.utils import load_topic_list
 from era_5g_relay_network_application.worker_results import WorkerResults
-
-# Set logging
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-logger = logging.getLogger("relay interface python")
-
-workers: Dict[str, Worker] = dict()
-
-node: Optional[Node] = None
+from era_5g_relay_network_application.worker_results_socketio import WorkerResultsSocketIO
+from era_5g_relay_network_application.worker_service_socketio import WorkerServiceSocketIO
+from era_5g_relay_network_application.worker_service import WorkerService
 
 
-@sio.on("image", namespace="/data")
-def image_callback_websocket(sid, data: dict):
-    """
-    Allows to receive jpg-encoded image using the websocket transport
+# port of the netapp's server
+NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 
-    Args:
-        data (dict): An encoded image frame and (optionally) related timestamp in format:
-            {'frame': 'bytes', 'timestamp': 'int'}
+class RelayInterface(RelayInterfaceCommon):
+    def __init__(self, port: int, workers: Dict[str, Worker], results_queue: Queue, 
+                 services_requests_queue: Queue, services_responses_queue: Queue, *args, **kwargs) -> None:
+        super().__init__(port, *args, **kwargs)
+        self.node = None
+        self.sio.on("image", self.image_callback_websocket, namespace="/data")
+        self.sio.on("json", self.json_callback_websocket, namespace="/data")
+        self.workers = workers
+        self.worker_results = WorkerResultsSocketIO(results_queue, self.result_subscribers, self.sio)
+        self.worker_service = WorkerServiceSocketIO(services_responses_queue, self.sio)
+        self.services_requests_queue = services_requests_queue
+        self.services_responses_queue = services_responses_queue
 
-    Raises:
-        ConnectionRefusedError: Raised when attempt for connection were made
-            without registering first or frame was not passed in correct format.
-    """
-    recv_timestamp = time.time_ns()
-    if "timestamp" in data:
-        timestamp = data["timestamp"]
-    else:
-        logging.debug("Timestamp not set, setting default value")
-        timestamp = 0
+    def run(self):
+        self.worker_results.daemon = True
+        self.worker_results.start()
+        self.worker_service.daemon = True
+        self.worker_service.start()
+        self.run_server()
 
-    eio_sid = sio.manager.eio_sid_from_sid(sid, "/data")
 
-    if "frame" not in data:
-        logging.error(f"Data does not contain frame.")
-        sio.emit(
-            "image_error",
-            {"timestamp": timestamp, "error": f"Data does not contain frame."},
-            namespace="/data",
-            to=sid,
-        )
-        return
+    def image_callback_websocket(self, sid, data: dict):
+        """
+        Allows to receive jpg-encoded image using the websocket transport
 
-    try:
-        metadata = data.get("metadata")
-        if metadata is None:
-            logging.warning(f"No metadata {data}")
+        Args:
+            data (dict): An encoded image frame and (optionally) related timestamp in format:
+                {'frame': 'bytes', 'timestamp': 'int'}
+
+        Raises:
+            ConnectionRefusedError: Raised when attempt for connection were made
+                without registering first or frame was not passed in correct format.
+        """
+        recv_timestamp = time.time_ns()
+        if "timestamp" in data:
+            timestamp = data["timestamp"]
+        else:
+            logging.debug("Timestamp not set, setting default value")
+            timestamp = 0
+
+        eio_sid = self.sio.manager.eio_sid_from_sid(sid, "/data")
+
+        if "frame" not in data:
+            logging.error(f"Data does not contain frame.")
+            self.sio.emit(
+                "image_error",
+                {"timestamp": timestamp, "error": f"Data does not contain frame."},
+                namespace="/data",
+                to=sid,
+            )
             return
-        topic_name = metadata.get("topic_name")
-        topic_type = metadata.get("topic_type")
-        msg = data.get("frame")
-        if topic_name is None or topic_type is None:
+
+        try:
+            metadata = data.get("metadata")
+            if metadata is None:
+                logging.warning(f"No metadata {data}")
+                return
+            topic_name = metadata.get("topic_name")
+            topic_type = metadata.get("topic_type")
+            msg = data.get("frame")
+            if topic_name is None or topic_type is None:
+                return
+            
+            try:
+                w: WorkerImage = self.workers.get(topic_name, None)
+                if w is None:
+                    logging.error(f"Arrived message on topic that is not registered {topic_name}")
+                    return
+                w.queue.put_nowait((msg, timestamp))
+            except Full:
+                pass
+
+        except (ValueError, binascii.Error) as error:
+            logging.error(f"Failed to decode frame data: {error}")
+            self.sio.emit(
+                "image_error",
+                {"timestamp": timestamp, "error": f"Failed to decode frame data: {error}"},
+                namespace="/data",
+                to=sid,
+            )
             return
-        worker_thread = workers.get(topic_name)
-        if worker_thread is None:
-            q: Queue = Queue(1)
-            worker_thread = WorkerImage(q, topic_name, topic_type, node)
-            worker_thread.daemon = True
-            worker_thread.start()
-            workers[topic_name] = worker_thread
-        try:
-            worker_thread.queue.put((msg, timestamp), block=False)
-        except Full:
-            pass
-
-    except (ValueError, binascii.Error) as error:
-        logging.error(f"Failed to decode frame data: {error}")
-        sio.emit(
-            "image_error",
-            {"timestamp": timestamp, "error": f"Failed to decode frame data: {error}"},
-            namespace="/data",
-            to=sid,
-        )
-        return
 
 
-@sio.on("json", namespace="/data")
-def json_callback_websocket(sid: str, data: Dict[str, Any]):
-    """
-    Allows to receive general json data using the websocket transport
+    def json_callback_websocket(self, sid: str, data: Dict[str, Any]):
+        """
+        Allows to receive general json data using the websocket transport
 
-    Args:
-        sid ():
-        data (dict): NetApp-specific json data
+        Args:
+            data (dict): NetApp-specific json data
 
-    Raises:
-        ConnectionRefusedError: Raised when attempt for connection were made
-            without registering first.
-    """
-    logging.debug(f"client with task id: {sio.manager.eio_sid_from_sid(sid, '/data')} sent data {data}")
-    global workers
-    packet_type = data.get("packet_type")
-    if packet_type == PacketType.MESSAGE:
-        msg_packet = MessagePacket(**data)
+        Raises:
+            ConnectionRefusedError: Raised when attempt for connection were made
+                without registering first.
+        """
+        packet_type = data.get("packet_type")
+        if packet_type == PacketType.MESSAGE:
+            msg_packet = MessagePacket(**data)
 
-        worker_thread = workers.get(msg_packet.topic_name)
-        if worker_thread is None:
-            q: Queue = Queue(1)
-            worker_thread = Worker(q, msg_packet.topic_name, msg_packet.topic_type, node)
-            worker_thread.daemon = True
-            worker_thread.start()
-            workers[msg_packet.topic_name] = worker_thread
-        try:
-            worker_thread.queue.put(msg_packet.data, block=False)
-        except Full:
-            pass
+            try:
+                w: Worker = self.workers.get(msg_packet.topic_name, None)
+                if w is None:
+                    logging.error(f"Arrived message on topic that is not registered {msg_packet.topic_name}")
+                    return
+                w.queue.put_nowait(msg_packet.data)
+            except Full:
+                pass
+            return
+        
+        elif packet_type == PacketType.SERVICE_REQUEST:
+            packet = ServiceRequestPacket(**data)
+            self.services_requests_queue.put_nowait(
+                (self.sio.manager.sid_from_eio_sid(sid, "/results"), packet))
+            return
 
-    elif packet_type == PacketType.SERVICE_REQUEST:
-        packet = ServiceRequestPacket(**data)
-        proxy = node.create_client(ros_loader.get_service_class(packet.service_type), packet.service_name)
-        inst = ros_loader.get_service_request_instance(packet.service_type)
-        # Populate the instance with the provided args
-        while not proxy.wait_for_service(timeout_sec=1.0):
-            node.get_logger().info('Service is not available, waiting again...')
-        future: Future = proxy.call_async(populate_instance(packet.data, inst))
-        rclpy.spin_until_future_complete(node, future)
 
-        d = extract_values(future.result())
-        message = ServiceResponsePacket(
-            packet_type=PacketType.SERVICE_RESPONSE,
-            data=d,
-            service_name=packet.service_name,
-            service_type=packet.service_type,
-            id=packet.id,
-        )
-        sio.emit(
-            "message",
-            asdict(message),
-            namespace="/results",
-            to=sio.manager.sid_from_eio_sid(sid, "/results"),
-        )
-
+            
+        
 
 def main(args=None) -> None:
-    topics = load_topic_list()
+    topics_results = load_topic_list()
+    topics_to_publish = load_topic_list("TOPIC_TO_PUB_LIST")
 
     rclpy.init(args=args)
-    global node
     node = rclpy.create_node("relay_netapp")
     node.get_logger().set_level(logging.DEBUG)
-    node.get_logger().debug(f"Loaded topics: {topics}")
+    node.get_logger().debug(f"Loaded topics for results: {topics_results}")
+    node.get_logger().debug(f"Loaded topics for publishing: {topics_to_publish}")
 
+    workers = dict()
+    for topic_name, _, topic_type in topics_to_publish:
+        q = Queue(5)
+        if topic_type == "sensor_msgs/msg/Image":
+            w = WorkerImage(q, topic_name, topic_type, node)
+        else:
+            w = Worker(q, topic_name, topic_type, node)
+        w.daemon = True
+        w.start()
+        workers[topic_name] = w
+    
+    
+
+    
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(node)
 
-    for topic_name, _, topic_type in topics:
-        _ = WorkerResults(topic_name, topic_type, node, sio, result_subscribers)
+    results_queue = Queue(20)
+    services_requests_queue = Queue(20)
+    services_responses_queue = Queue(20)
+
+    worker_service = WorkerService(services_requests_queue, services_responses_queue, node)
+    worker_service.daemon = True
+    worker_service.start()
 
     executor_thread = threading.Thread(target=executor.spin, daemon=True)
     executor_thread.start()
 
-    # runs the flask server
-    # allow_unsafe_werkzeug needs to be true to run inside the docker
-    # TODO: use better webserver
-    app.run(port=NETAPP_PORT, host="0.0.0.0")
+    socketio_process = RelayInterface(NETAPP_PORT, workers, results_queue, services_requests_queue, services_responses_queue)
+
+    socketio_process.start()
+    results_workers = dict()
+
+    for topic_name, _, topic_type in topics_results:
+        results_workers[topic_name] = WorkerResults(topic_name, topic_type, node, results_queue)
+    
+    socketio_process.join()
+
+    rclpy.shutdown()  # Shutdown rclpy when finished"""
 
 
 if __name__ == "__main__":

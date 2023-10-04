@@ -1,25 +1,13 @@
-import os
+from ast import Set
+from collections.abc import Callable, Iterable, Mapping
+from multiprocessing import Lock, Process
 from collections.abc import Iterator
-from threading import Lock
-from typing import Dict, Set
-
-import socketio
+from typing import Any, Dict
 from engineio.payload import Payload
+from era_5g_interface.dataclasses.control_command import ControlCmdType
+from era_5g_interface.dataclasses.control_command import ControlCommand
 from flask import Flask
-
-from era_5g_interface.dataclasses.control_command import ControlCommand, ControlCmdType
-
-# port of the netapp's server
-NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
-
-# to get rid of ValueError: Too many packets in payload (see https://github.com/miguelgrinberg/python-engineio/issues/142)
-Payload.max_decode_packets = 50
-
-# the max_http_buffer_size parameter defines the max size of the message to be passed
-sio = socketio.Server(async_mode="threading", max_http_buffer_size=5 * (1024 ** 2))
-app = Flask(__name__)
-app.wsgi_app = socketio.WSGIApp(sio, app.wsgi_app)  # type: ignore
-
+import socketio
 
 class LockedSet(set):
     """A set which can be safely iterated and modified from different threads"""
@@ -58,99 +46,121 @@ class LockedSet(set):
     def __iter__(self) -> Iterator:
         return self.locked_iter(super().__iter__())
 
-
-result_subscribers: Set[str] = LockedSet()
-
-
 class ArgFormatError(Exception):
     pass
 
 
-def get_sid_of_namespace(eio_sid, namespace):
-    return sio.manager.sid_from_eio_sid(eio_sid, namespace)
 
 
-def get_results_sid(eio_sid):
-    return sio.manager.sid_from_eio_sid(eio_sid, "/results")
+class RelayInterfaceCommon(Process):
+    def __init__(self, port: int, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        # to get rid of ValueError: Too many packets in payload (see https://github.com/miguelgrinberg/python-engineio/issues/142)
+        Payload.max_decode_packets = 50
+
+        # the max_http_buffer_size parameter defines the max size of the message to be passed
+        self.sio = socketio.Server(async_mode="threading", max_http_buffer_size=5 * (1024 ** 2))
+        self.app = Flask(__name__)
+        self.app.wsgi_app = socketio.WSGIApp(self.sio, self.app.wsgi_app)  # type: ignore
+        self.sio.on("connect", self.connect_data, namespace="/data")
+        self.sio.on("connect", self.connect_control, namespace="/control")
+        self.sio.on("connect", self.connect_results, namespace="/results")
 
 
-@sio.on("connect", namespace="/data")
-def connect_data(sid, environ):
-    """_summary_
-    Creates a websocket connection to the client for passing the data.
-
-    Raises:
-        ConnectionRefusedError: Raised when attempt for connection were made
-            without registering first.
-    """
-    print(f"Connected data. Session id: {sio.manager.eio_sid_from_sid(sid, '/data')}, namespace_id: {sid}")
-    sio.send("you are connected", namespace="/data", to=sid)
+        self.sio.on("command", self.command_callback_websocket, namespace="/control")
+        
+        self.sio.on("disconnect", self.disconnect_results, namespace="/results")
+        self.sio.on("disconnect", self.disconnect_data, namespace="/data")
+        self.sio.on("disconnect", self.disconnect_control, namespace="/control")
+        self.port = port
+        
+        self.result_subscribers: Set[str] = LockedSet()
 
 
-@sio.on("connect", namespace="/control")
-def connect_control(sid, environ):
-    """_summary_
-    Creates a websocket connection to the client for passing control commands.
-
-    Raises:
-        ConnectionRefusedError: Raised when attempt for connection were made
-            without registering first.
-    """
-
-    print(f"Connected control. Session id: {sio.manager.eio_sid_from_sid(sid, '/control')}, namespace_id: {sid}")
-    sio.send("you are connected", namespace="/control", to=sid)
+    def run_server(self):
+        self.app.run(port=self.port, host="0.0.0.0")
 
 
-@sio.on("connect", namespace="/results")
-def connect_results(sid, environ):
-    """
-    Creates a websocket connection to the client for passing the results.
-
-    Raises:
-        ConnectionRefusedError: Raised when attempt for connection were made
-            without registering first.
-    """
-
-    print(f"Connected results. Session id: {sio.manager.eio_sid_from_sid(sid, '/results')}, namespace_id: {sid}")
-    sio.send("You are connected", namespace="/results", to=sid)
+    def get_sid_of_namespace(self, eio_sid, namespace):
+        return self.sio.manager.sid_from_eio_sid(eio_sid, namespace)
 
 
-@sio.on("command", namespace="/control")
-def command_callback_websocket(sid, data: Dict):
-    eio_sid = sio.manager.eio_sid_from_sid(sid, '/control')
-    try:
-        command = ControlCommand(**data)
-    except TypeError as e:
-        print(f"Could not parse Control Command. {str(e)}")
-        sio.emit(
-            "control_cmd_error",
-            {"error": f"Could not parse Control Command. {str(e)}"},
-            namespace='/control',
-            to=sid
-        )
-        return
+    def get_results_sid(self, eio_sid):
+        return self.sio.manager.sid_from_eio_sid(eio_sid, "/results")
 
-    print(f"Control command {command} processing: session id: {sid}")  # check if the client wants to receive results
-    if command and command.cmd_type == ControlCmdType.INIT:
-        args = command.data
-        if args:
-            sr = args.get("subscribe_results")
-            if sr:
-                result_subscribers.add(sio.manager.eio_sid_from_sid(sid, "/control"))
+    def connect_data(self, sid, environ):
+        """_summary_
+        Creates a websocket connection to the client for passing the data.
+
+        Raises:
+            ConnectionRefusedError: Raised when attempt for connection were made
+                without registering first.
+        """
+        print(f"Connected data. Session id: {self.sio.manager.eio_sid_from_sid(sid, '/data')}, namespace_id: {sid}")
+        self.sio.send("you are connected", namespace="/data", to=sid)
 
 
-@sio.on("disconnect", namespace="/results")
-def disconnect_results(sid):
-    print(f"Client disconnected from /results namespace: session id: {sid}")
+    def connect_control(self, sid, environ):
+        """_summary_
+        Creates a websocket connection to the client for passing control commands.
+
+        Raises:
+            ConnectionRefusedError: Raised when attempt for connection were made
+                without registering first.
+        """
+
+        print(f"Connected control. Session id: {self.sio.manager.eio_sid_from_sid(sid, '/control')}, namespace_id: {sid}")
+        self.sio.send("you are connected", namespace="/control", to=sid)
 
 
-@sio.on("disconnect", namespace="/data")
-def disconnect_data(sid):
-    eio_sid = sio.manager.eio_sid_from_sid(sid, "/data")
-    result_subscribers.discard(eio_sid)
-    print(f"Client disconnected from /data namespace: session id: {sid}")
+    def connect_results(self, sid, environ):
+        """
+        Creates a websocket connection to the client for passing the results.
+
+        Raises:
+            ConnectionRefusedError: Raised when attempt for connection were made
+                without registering first.
+        """
+
+        print(f"Connected results. Session id: {self.sio.manager.eio_sid_from_sid(sid, '/results')}, namespace_id: {sid}")
+        self.sio.send("You are connected", namespace="/results", to=sid)
 
 
-@sio.on("disconnect", namespace="/control")
-def disconnect_control(sid):
-    print(f"Client disconnected from /control namespace: session id: {sid}")
+    def command_callback_websocket(self, sid, data: Dict):
+        eio_sid = self.sio.manager.eio_sid_from_sid(sid, '/control')
+        try:
+            command = ControlCommand(**data)
+        except TypeError as e:
+            print(f"Could not parse Control Command. {str(e)}")
+            self.sio.emit(
+                "control_cmd_error",
+                {"error": f"Could not parse Control Command. {str(e)}"},
+                namespace='/control',
+                to=sid
+            )
+            return
+
+        print(f"Control command {command} processing: session id: {sid}")  # check if the client wants to receive results
+        if command and command.cmd_type == ControlCmdType.INIT:
+            args = command.data
+            if args:
+                sr = args.get("subscribe_results")
+                if sr:
+                    
+                    self.result_subscribers.add(self.sio.manager.eio_sid_from_sid(sid, "/control"))
+                    print(self.result_subscribers)
+
+
+    def disconnect_results(self, sid):
+        print(f"Client disconnected from /results namespace: session id: {sid}")
+
+
+    def disconnect_data(self, sid):
+        eio_sid = self.sio.manager.eio_sid_from_sid(sid, "/data")
+        self.result_subscribers.discard(eio_sid)
+        print(f"Client disconnected from /data namespace: session id: {sid}")
+
+
+    def disconnect_control(self, sid):
+        print(f"Client disconnected from /control namespace: session id: {sid}")

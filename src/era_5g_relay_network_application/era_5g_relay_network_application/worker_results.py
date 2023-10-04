@@ -16,7 +16,7 @@ class WorkerResults:
     the flask app.
     """
 
-    def __init__(self, topic_name: str, topic_type: str, node: Node, sio: Server, subscribers: Set, **kw):
+    def __init__(self, topic_name: str, topic_type: str, node: Node, results_queue, **kw):
         """
         Constructor
 
@@ -32,22 +32,14 @@ class WorkerResults:
         self.node.get_logger().debug(f"Create Subscription: {type(inst)} {topic_name}")
         self.sub = node.create_subscription(type(inst), topic_name, self.callback, 10)
         self.inst = inst
-        self.sio = sio
-        self.subscribers = subscribers
+        self.results_queue = results_queue
+        
         self.topic_name = topic_name
         self.topic_type = topic_type
 
     def callback(self, data: Any):
-        # self.node.get_logger().debug(f"Subscription callback {data}")
         msg = extract_values(data)
         message = MessagePacket(
             packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type
         )
-
-        for s in self.subscribers:
-            self.sio.emit(
-                "message",
-                asdict(message),
-                namespace="/results",
-                to=self.sio.manager.sid_from_eio_sid(s, "/results"),
-            )
+        self.results_queue.put_nowait(message)
