@@ -64,12 +64,13 @@ TRANSFORM_LIST = [
     "source_frame": "map",
     "target_frame": "robot",
     "angular_thres": 0.1,
-    "trans_thres": 0.001 
+    "trans_thres": 0.001,
+    "max_publish_period": 1.0 
   }
 ]
 ```
 
-Thresholds are not mandatory and are set to the example values by default.
+Thresholds are not mandatory and are set to the example values by default. Only changes exceeding the thresholds are transmitted. The `max_publish_period` value can be used to force periodical publishing - even when there are no changes. This behavior can be disabled by setting it to zero (which is the default value).
 
 
 To set the connection to the Relay Server or Relay Inter, following env variable are used:
