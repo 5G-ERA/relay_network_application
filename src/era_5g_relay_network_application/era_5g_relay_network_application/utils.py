@@ -5,14 +5,20 @@ import uuid
 from typing import List, Tuple, Optional, Dict
 
 
-def load_transform_list(env_name: str = "TRANSFORM_LIST") -> List[Tuple[str, str, float, float]]:
+def load_transform_list(env_name: str = "TRANSFORM_LIST") -> List[Tuple[str, str, float, float, float]]:
     tr_list = os.getenv(env_name)
     if tr_list is None:
         return []
     tr_data = json.loads(tr_list)
     try:
         return [
-            (tr["source_frame"], tr["target_frame"], tr.get("angular_thres", 0.1), tr.get("trans_thres", 0.001))
+            (
+                tr["source_frame"],
+                tr["target_frame"],
+                tr.get("angular_thres", 0.1),
+                tr.get("trans_thres", 0.001),
+                tr.get("max_publish_period", 0.0),
+            )
             for tr in tr_data
         ]
     except KeyError:
