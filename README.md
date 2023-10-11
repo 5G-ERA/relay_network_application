@@ -111,6 +111,22 @@ The variable description is the same as in the Relay Client. It specifies the to
 mirrored from edge/cloud to the robot. The `topic_name_remapped` could be specified, but it is currently
 ignored.
 
+Besides, the list of topics that should be obtained from the robot and published on the remote device needs to be specified for the server part, using the `TOPIC_TO_PUB_LIST` env variable with the same format as the `TOPIC_LIST` variable:
+
+```json
+TOPIC_TO_PUB_LIST = [
+  {
+    "topic_name": "/axis/image_raw",
+    "topic_type": "sensor_msgs/Image"
+  },
+  {
+    "topic_name": "/test_str",
+    "topic_type": "std_msgs/String"
+  }
+]
+```
+
+
 ![The simple Relay Server scenario](docs/images/relay_server.png)
 
 The robot runs two Relay Clients and there are two Relay Servers deployed on two independent ROS
