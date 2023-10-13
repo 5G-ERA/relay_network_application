@@ -28,5 +28,5 @@ echo "input_images: $input_images"
 echo "output_images: $output_images"
 echo "results: $results"
 
-source /opt/ros/noetic/setup.bash
+source /opt/ros/humble/setup.bash
 exec python3 /root/detection_publisher.py input_images:=$input_images output_images:=$output_images results:=$results
