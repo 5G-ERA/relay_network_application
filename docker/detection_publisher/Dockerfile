@@ -1,4 +1,4 @@
-FROM ros:noetic
+FROM ros:humble
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Prague

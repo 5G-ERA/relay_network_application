@@ -8,3 +8,4 @@ pymongo
 strenum~=0.4.15
 rospkg
 era-5g-tf2json~=0.2.0
+ujson~=5.8.0
