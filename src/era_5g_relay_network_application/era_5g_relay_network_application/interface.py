@@ -8,6 +8,8 @@ from queue import Full
 import time
 from typing import Any, Dict, Optional, List
 
+
+
 from geometry_msgs.msg import TransformStamped
 from tf2_msgs.msg import TFMessage
 
@@ -35,7 +37,7 @@ class RelayInterface(RelayInterfaceCommon):
     def __init__(
         self,
         port: int,
-        workers: Dict[str, Worker],
+        queues: Dict[str, Queue],
         results_queue: Queue,
         services_requests_queue: Queue,
         services_responses_queue: Queue,
@@ -46,7 +48,7 @@ class RelayInterface(RelayInterfaceCommon):
         self.node = None
         self.sio.on("image", self.image_callback_websocket, namespace="/data")
         self.sio.on("json", self.json_callback_websocket, namespace="/data")
-        self.workers = workers
+        self.queues = queues
         self.worker_results = WorkerResultsSocketIO(results_queue, self.result_subscribers, self.sio)
         self.worker_service = WorkerServiceSocketIO(services_responses_queue, self.sio)
         self.services_requests_queue = services_requests_queue
@@ -102,11 +104,11 @@ class RelayInterface(RelayInterfaceCommon):
                 return
 
             try:
-                w: WorkerImage = self.workers.get(topic_name, None)
-                if w is None:
+                q: Queue = self.queues.get(topic_name, None)
+                if q is None:
                     logging.error(f"Arrived message on topic that is not registered {topic_name}")
                     return
-                w.queue.put_nowait((msg, timestamp))
+                q.put_nowait((msg, timestamp))
             except Full:
                 pass
 
@@ -136,11 +138,12 @@ class RelayInterface(RelayInterfaceCommon):
             msg_packet = MessagePacket(**data)
 
             try:
-                w: Worker = self.workers.get(msg_packet.topic_name, None)
-                if w is None:
+                q: Queue = self.queues.get(msg_packet.topic_name, None)
+                
+                if q is None:
                     logging.error(f"Arrived message on topic that is not registered {msg_packet.topic_name}")
                     return
-                w.queue.put_nowait(msg_packet.data)
+                q.put_nowait(msg_packet.data)
             except Full:
                 pass
             return
@@ -164,23 +167,25 @@ def main(args=None) -> None:
     node.get_logger().debug(f"Loaded transforms for listening: {transforms_to_listen}")
 
     # can't know if client will want to send some TFs so we have to create worker for it
-    topics_to_publish.append(("/tf", None, "tf2_msgs/TFMessage"))
+    topics_to_publish.append(("/tf", None, "tf2_msgs/TFMessage", None))
 
     workers = dict()
-    for topic_name, _, topic_type in topics_to_publish:
-        q = Queue(5)
+    queues = dict()
+    for topic_name, _, topic_type, compression in topics_to_publish:
+        q = Queue(1)
         if topic_type == "sensor_msgs/msg/Image":
             w = WorkerImage(q, topic_name, topic_type, node)
         else:
-            w = Worker(q, topic_name, topic_type, node)
+            w = Worker(q, topic_name, topic_type, compression, node)
         w.daemon = True
         w.start()
         workers[topic_name] = w
+        queues[topic_name] = q
 
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(node)
 
-    results_queue = Queue(20)
+    results_queue = Queue(8)
     services_requests_queue = Queue(20)
     services_responses_queue = Queue(20)
 
@@ -192,14 +197,14 @@ def main(args=None) -> None:
     executor_thread.start()
 
     socketio_process = RelayInterface(
-        NETAPP_PORT, workers, results_queue, services_requests_queue, services_responses_queue
+        NETAPP_PORT, queues, results_queue, services_requests_queue, services_responses_queue
     )
 
     socketio_process.start()
     results_workers = dict()
 
-    for topic_name, _, topic_type in topics_results:
-        results_workers[topic_name] = WorkerResults(topic_name, topic_type, node, results_queue)
+    for topic_name, _, topic_type, compression in topics_results:
+        results_workers[topic_name] = WorkerResults(topic_name, topic_type, compression, node, results_queue)
 
     tf_republisher: Optional[TFRepublisher] = None
 
@@ -211,11 +216,13 @@ def main(args=None) -> None:
                 topic_name="/tf",
                 topic_type="tf2_msgs/TFMessage",
             )
-
-            results_queue.put_nowait(message)
+            try:
+                results_queue.put_nowait(message)
+            except Full:
+                pass
 
     if transforms_to_listen:
-        tf_republisher = TFRepublisher(node, tf_callback)
+        tf_republisher = TFRepublisher(node, tf_callback, rate=100)
         for tr in transforms_to_listen:
             node.get_logger().info(f"Subscribing for: {tr}")
             tf_republisher.subscribe_transform(*tr)

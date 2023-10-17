@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import auto
 from strenum import StrEnum
 from typing import Any, Dict
+from era_5g_relay_network_application.utils import Compressions
 
 
 class PacketType(StrEnum):
