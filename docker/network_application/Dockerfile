@@ -5,7 +5,7 @@ ENV TZ=Europe/Prague
 ENV LANG C.UTF-8
 
 RUN apt-get update \
-    && apt-get install -y python3-pip ros-humble-rosbridge-library ros-humble-cv-bridge
+    && apt-get install -y python3-pip ros-humble-rosbridge-library ros-humble-cv-bridge ros-humble-sensor-msgs-py
 
 
 COPY src/era_5g_relay_network_application /root/era_5g_relay_network_application
