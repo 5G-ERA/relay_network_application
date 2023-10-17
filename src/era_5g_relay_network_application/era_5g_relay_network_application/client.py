@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, List, Union
 import numpy as np
 from sys import getsizeof
 
-from sensor_msgs_py.point_cloud2 import read_points
+from sensor_msgs_py.point_cloud2 import read_points, create_cloud_xyz32
 import DracoPy
 
 import rclpy
@@ -146,7 +146,15 @@ def results(data: Union[Dict, str]) -> None:
         if pub is None:
             pub = node.create_publisher(type(inst), msg_packet.topic_name, 10)
             results_publishers[msg_packet.topic_name] = pub
-        pub.publish(populate_instance(msg_packet.data, inst))
+
+        if isinstance(inst, PointCloud2):
+            msg = create_cloud_xyz32(
+                populate_instance(msg_packet.data, inst).header, DracoPy.decode(msg_packet.data["data"]).points
+            )
+        else:
+            msg = populate_instance(msg_packet.data, inst)
+
+        pub.publish(msg)
     elif packet_type == PacketType.SERVICE_RESPONSE:
         packet = ServiceResponsePacket(**data)
         inst = ros_loader.get_service_response_instance(packet.service_type)
