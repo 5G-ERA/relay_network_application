@@ -50,7 +50,7 @@ class Worker(Thread):
             d = self.queue.get(block=True, timeout=1)
             if isinstance(self.inst, LaserScan):
                 d["ranges"][:] = [x if x is not None else float("inf") for x in d["ranges"]]
-            elif isinstance(self.inst, PointCloud2):
+            elif isinstance(self.inst, PointCloud2) and self.compression == Compressions.DRACO:
                 return create_cloud_xyz32(populate_instance(d, self.inst).header, DracoPy.decode(d["data"]).points)
             if self.compression == Compressions.LZ4:
                 d = json.loads(decompress(d))

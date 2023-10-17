@@ -1,3 +1,4 @@
+import ujson
 import logging
 import os
 import signal
@@ -111,18 +112,9 @@ def callback_others(data: Any, topic_name=None, topic_type=None, compression: Co
     if topic_name is None or topic_type is None:
         logger.error("You need to specify topic name and type!")
         return
-    d = extract_values(data)
-    if compression == Compressions.LZ4:
-        d = compress(bytes(json.dumps(d), 'utf-8'))
-    message = MessagePacket(
-        packet_type=PacketType.MESSAGE,
-        data=d,
-        topic_name=topic_name,
-        topic_type=topic_type,
-        compression=compression
-    )
-
-    if topic_type == "sensor_msgs/PointCloud2":
+    
+        
+    if topic_type == "sensor_msgs/msg/PointCloud2" and compression == Compressions.DRACO:
         np_arr = np.array(list(read_points(data)))[:, :3]  # drop intensity...
 
         before_comp = time.monotonic_ns()
@@ -133,7 +125,21 @@ def callback_others(data: Any, topic_name=None, topic_type=None, compression: Co
             f"PointCloud2 compression took {(after_comp-before_comp)/10**6:.02f} ms and ratio is {getsizeof(cpc) / np_arr.nbytes * 100:.02}%"
         )
 
-        message.data["data"] = cpc
+        d = cpc
+    else:    
+        d = extract_values(data)
+        if compression == Compressions.LZ4:
+            d = compress(bytes(ujson.dumps(d), 'utf-8'))
+        
+    message = MessagePacket(
+        packet_type=PacketType.MESSAGE,
+        data=d,
+        topic_name=topic_name,
+        topic_type=topic_type,
+        compression=compression
+    )
+
+    
 
     client.send_json_ws(asdict(message))
 
@@ -159,8 +165,8 @@ def results(data: Union[Dict, str]) -> None:
         if pub is None:
             pub = node.create_publisher(type(inst), msg_packet.topic_name, 10)
             results_publishers[msg_packet.topic_name] = pub
-	if msg_packet.compression == Compressions.LZ4:
-            d = json.loads(decompress(msg_packet.data))
+        if msg_packet.compression == Compressions.LZ4:
+            d = ujson.loads(decompress(msg_packet.data))
         else:
             d = msg_packet.data
 
@@ -169,7 +175,7 @@ def results(data: Union[Dict, str]) -> None:
                 populate_instance(d, inst).header, DracoPy.decode(msg_packet.data["data"]).points
             )
         else:
-            msg = populate_instance(msg_packet.data, inst)
+            msg = populate_instance(d, inst)
 
         pub.publish(msg)
     elif packet_type == PacketType.SERVICE_RESPONSE:

@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional, Dict
 class Compressions(str, Enum):
     NONE = 'none'
     LZ4 = 'lz4'
+    DRACO = 'draco'
 
     @classmethod
     def _missing_(cls, value):
