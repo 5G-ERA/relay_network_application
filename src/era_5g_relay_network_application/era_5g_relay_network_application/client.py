@@ -9,6 +9,12 @@ from functools import partial
 from types import FrameType
 from typing import Any, Dict, Optional, List, Union
 
+import numpy as np
+from sys import getsizeof
+
+from sensor_msgs_py.point_cloud2 import read_points
+import DracoPy
+
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
@@ -20,7 +26,7 @@ from rosbridge_library.internal.message_conversion import (
     extract_values,
     populate_instance,
 )
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, PointCloud2
 from geometry_msgs.msg import TransformStamped
 from tf2_msgs.msg import TFMessage
 
@@ -102,6 +108,20 @@ def callback_others(data: Any, topic_name=None, topic_type=None):
         topic_name=topic_name,
         topic_type=topic_type,
     )
+
+    if topic_type == "sensor_msgs/PointCloud2":
+        np_arr = np.array(list(read_points(data)))[:, :3]  # drop intensity...
+
+        before_comp = time.monotonic_ns()
+        cpc = DracoPy.encode(np_arr, compression_level=1)
+        after_comp = time.monotonic_ns()
+
+        logger.debug(
+            f"PointCloud2 compression took {(after_comp-before_comp)/10**6:.02f} ms and ratio is {getsizeof(cpc) / np_arr.nbytes * 100:.02}%"
+        )
+
+        message.data["data"] = cpc
+
     client.send_json_ws(asdict(message))
 
 

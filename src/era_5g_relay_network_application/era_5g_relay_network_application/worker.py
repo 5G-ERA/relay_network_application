@@ -1,13 +1,15 @@
 import logging
 from queue import Empty, Queue
 from threading import Event, Thread
-import time
 
 from rclpy.node import Node
 from rosbridge_library.internal import ros_loader
 from rosbridge_library.internal.message_conversion import populate_instance, FieldTypeMismatchException
 
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, PointCloud2
+from sensor_msgs_py.point_cloud2 import create_cloud_xyz32
+
+import DracoPy
 
 
 class Worker(Thread):
@@ -39,9 +41,10 @@ class Worker(Thread):
     def get_data(self):
         try:
             d = self.queue.get(block=True, timeout=1)
-            if type(self.inst) == LaserScan:
+            if isinstance(self.inst, LaserScan):
                 d["ranges"][:] = [x if x is not None else float("inf") for x in d["ranges"]]
-            return populate_instance(d, self.inst)
+            elif isinstance(self.inst, PointCloud2):
+                return create_cloud_xyz32(populate_instance(d, self.inst).header, DracoPy.decode(d["data"]).points)
         except Empty:
             return None
         except (FieldTypeMismatchException, TypeError) as ex:
