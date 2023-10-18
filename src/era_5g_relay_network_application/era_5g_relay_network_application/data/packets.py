@@ -35,6 +35,7 @@ class MessagePacket(Packet):
     # TODO: add docstring
     topic_name: str
     topic_type: str
+    compression: Compressions
 
 
 @dataclass
