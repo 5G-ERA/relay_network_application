@@ -113,24 +113,22 @@ def callback_others(data: Any, topic_name=None, topic_type=None, compression: Co
         logger.error("You need to specify topic name and type!")
         return
     
-        
+    d = extract_values(data)
+    if compression == Compressions.LZ4:
+        d = compress(bytes(ujson.dumps(d), 'utf-8'))
     if topic_type == "sensor_msgs/msg/PointCloud2" and compression == Compressions.DRACO:
         np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc...
-
         before_comp = time.monotonic_ns()
         cpc = DracoPy.encode(np_arr, compression_level=1)
+        #print(cpc)
         after_comp = time.monotonic_ns()
 
         logger.debug(
-            f"PointCloud2 compression took {(after_comp-before_comp)/10**6:.02f} ms and ratio is {getsizeof(cpc) / np_arr.nbytes * 100:.02}%"
+            f"PointCloud2 compression took {(after_comp-before_comp)/10**6:.02f} ms and ratio is {getsizeof(cpc) / np_arr.nbytes * 100:.04}%"
         )
 
-        d = cpc
-    else:    
-        d = extract_values(data)
-        if compression == Compressions.LZ4:
-            d = compress(bytes(ujson.dumps(d), 'utf-8'))
-        
+        d["data"] = cpc
+    
     message = MessagePacket(
         packet_type=PacketType.MESSAGE,
         data=d,
