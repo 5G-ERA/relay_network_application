@@ -220,6 +220,7 @@ def tf_callback(transforms: List[TransformStamped]) -> None:
             data=extract_values(TFMessage(transforms=transforms)),
             topic_name="/tf",
             topic_type="tf2_msgs/TFMessage",
+            compression=Compressions.NONE,
         )
         client.send_json_ws(asdict(message))
 
