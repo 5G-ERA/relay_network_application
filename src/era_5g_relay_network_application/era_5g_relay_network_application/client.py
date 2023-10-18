@@ -15,7 +15,7 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 import numpy as np
 from sys import getsizeof
 
-from sensor_msgs_py.point_cloud2 import read_points, create_cloud_xyz32
+from sensor_msgs_py.point_cloud2 import read_points_numpy, create_cloud_xyz32
 import DracoPy
 
 import rclpy
@@ -115,7 +115,7 @@ def callback_others(data: Any, topic_name=None, topic_type=None, compression: Co
     
         
     if topic_type == "sensor_msgs/msg/PointCloud2" and compression == Compressions.DRACO:
-        np_arr = np.array(list(read_points(data)))[:, :3]  # drop intensity...
+        np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc...
 
         before_comp = time.monotonic_ns()
         cpc = DracoPy.encode(np_arr, compression_level=1)
