@@ -1,4 +1,3 @@
-import time
 from typing import Any
 
 from rclpy.node import Node
@@ -10,7 +9,7 @@ from lz4.frame import compress
 from era_5g_relay_network_application.data.packets import MessagePacket, PacketType
 
 from sensor_msgs.msg import PointCloud2
-from sensor_msgs_py.point_cloud2 import read_points
+from sensor_msgs_py.point_cloud2 import read_points_numpy
 import DracoPy
 import numpy as np
 from era_5g_relay_network_application.utils import Compressions
@@ -54,7 +53,7 @@ class WorkerResults:
         )
 
         if isinstance(data, PointCloud2):
-            np_arr = np.array(list(read_points(data)))[:, :3]  # drop intensity...
+            np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc....
             cpc = DracoPy.encode(np_arr, compression_level=1)
             message.data["data"] = cpc
 
