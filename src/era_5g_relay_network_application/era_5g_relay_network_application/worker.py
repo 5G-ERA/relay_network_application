@@ -1,6 +1,9 @@
 import logging
 from queue import Empty, Queue
 from threading import Event, Thread
+import time
+from lz4.frame import decompress
+import json
 
 from rclpy.node import Node
 from rosbridge_library.internal import ros_loader
@@ -11,6 +14,9 @@ from sensor_msgs_py.point_cloud2 import create_cloud_xyz32
 
 import DracoPy
 
+from era_5g_relay_network_application.utils import Compressions
+
+
 
 class Worker(Thread):
     """
@@ -19,7 +25,7 @@ class Worker(Thread):
     the flask app.
     """
 
-    def __init__(self, queue: Queue, topic_name, topic_type, node: Node, **kw):
+    def __init__(self, queue: Queue, topic_name, topic_type, compression: Compressions, node: Node, **kw):
         """
         Constructor
 
@@ -34,6 +40,7 @@ class Worker(Thread):
         inst = ros_loader.get_message_instance(topic_type)
         self.pub = node.create_publisher(type(inst), topic_name, 1)
         self.inst = inst
+        self.compression = compression
 
     def stop(self):
         self.stop_event.set()
@@ -43,8 +50,11 @@ class Worker(Thread):
             d = self.queue.get(block=True, timeout=1)
             if isinstance(self.inst, LaserScan):
                 d["ranges"][:] = [x if x is not None else float("inf") for x in d["ranges"]]
-            elif isinstance(self.inst, PointCloud2):
+            elif isinstance(self.inst, PointCloud2) and self.compression == Compressions.DRACO:
                 return create_cloud_xyz32(populate_instance(d, self.inst).header, DracoPy.decode(d["data"]).points)
+            if self.compression == Compressions.LZ4:
+                d = json.loads(decompress(d))
+            return populate_instance(d, self.inst)
         except Empty:
             return None
         except (FieldTypeMismatchException, TypeError) as ex:

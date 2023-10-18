@@ -1,9 +1,22 @@
+from enum import Enum
 import json
 import os
 import uuid
 
 from typing import List, Tuple, Optional, Dict
 
+class Compressions(str, Enum):
+    NONE = 'none'
+    LZ4 = 'lz4'
+    DRACO = 'draco'
+
+    @classmethod
+    def _missing_(cls, value):
+        if value is None:
+            return cls('none')
+        return super()._missing_(value)
+    
+    
 
 def load_transform_list(env_name: str = "TRANSFORM_LIST") -> List[Tuple[str, str, float, float, float]]:
     tr_list = os.getenv(env_name)
@@ -32,11 +45,10 @@ def load_topic_list(env_name: str = "TOPIC_LIST") -> List[Tuple[str, Optional[st
     topic_data = json.loads(topic_list)
     try:
         return [
-            (topic["topic_name"], topic.get("topic_name_remapped", None), topic["topic_type"]) for topic in topic_data
+            (topic["topic_name"], topic.get("topic_name_remapped", None), topic["topic_type"], Compressions(topic.get("compression", None))) for topic in topic_data
         ]
     except KeyError:
-        print("Wrong format of the TOPIC_LIST variable. The correct format is:")
-        print_format()
+        print("Wrong format of the TOPIC_LIST variable.")
         raise ValueError()
 
 
@@ -48,8 +60,7 @@ def load_services_list(env_name: str = "SERVICE_LIST") -> List[Tuple[str, str]]:
     try:
         return [(service["service_name"], service["service_type"]) for service in service_data]
     except KeyError:
-        print("Wrong format of the SERVICE_LIST variable. The correct format is:")
-        print_format()
+        print("Wrong format of the SERVICE_LIST variable. ")
         raise ValueError()
 
 
@@ -73,9 +84,3 @@ def build_service_response(service_name: str, service_type: str, res: str, id: s
     }  # TODO this should be rather dataclass
 
 
-def print_format():
-    print("[")
-    print('  {"topic_name": "/topic1", "topic_type": "Type1"},')
-    print('  {"topic_name": "/topic2", "topic_type": "Type2"},')
-    print('  {"topic_name": "/topic3", "topic_name_cloud": "/topic3_cloud", "topic_type": "Type3"}')
-    print("]")

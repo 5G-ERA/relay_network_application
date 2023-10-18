@@ -1,3 +1,4 @@
+import ujson
 import logging
 import os
 import signal
@@ -8,6 +9,8 @@ from dataclasses import asdict
 from functools import partial
 from types import FrameType
 from typing import Any, Dict, Optional, List, Union
+from lz4.frame import compress, decompress
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 
 import numpy as np
 from sys import getsizeof
@@ -46,6 +49,7 @@ from era_5g_relay_network_application.utils import (
     load_topic_list,
     load_services_list,
     load_transform_list,
+    Compressions,
 )
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -77,6 +81,12 @@ services_results: Dict[str, Dict] = dict()
 
 node: Optional[Node] = None
 
+BEST_EFFORT = QoSProfile(
+            reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+            history=QoSHistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+            depth=1
+        )
+
 
 def callback_image(data: Image, topic_name=None, topic_type=None):
     assert client
@@ -95,21 +105,16 @@ def callback_image(data: Image, topic_name=None, topic_type=None):
         logger.warning("Empty image received!")
 
 
-def callback_others(data: Any, topic_name=None, topic_type=None):
+
+def callback_others(data: Any, topic_name=None, topic_type=None, compression: Compressions=Compressions.NONE):
     assert client
 
     if topic_name is None or topic_type is None:
         logger.error("You need to specify topic name and type!")
         return
-
-    message = MessagePacket(
-        packet_type=PacketType.MESSAGE,
-        data=extract_values(data),
-        topic_name=topic_name,
-        topic_type=topic_type,
-    )
-
-    if topic_type == "sensor_msgs/PointCloud2":
+    
+        
+    if topic_type == "sensor_msgs/msg/PointCloud2" and compression == Compressions.DRACO:
         np_arr = np.array(list(read_points(data)))[:, :3]  # drop intensity...
 
         before_comp = time.monotonic_ns()
@@ -120,7 +125,21 @@ def callback_others(data: Any, topic_name=None, topic_type=None):
             f"PointCloud2 compression took {(after_comp-before_comp)/10**6:.02f} ms and ratio is {getsizeof(cpc) / np_arr.nbytes * 100:.02}%"
         )
 
-        message.data["data"] = cpc
+        d = cpc
+    else:    
+        d = extract_values(data)
+        if compression == Compressions.LZ4:
+            d = compress(bytes(ujson.dumps(d), 'utf-8'))
+        
+    message = MessagePacket(
+        packet_type=PacketType.MESSAGE,
+        data=d,
+        topic_name=topic_name,
+        topic_type=topic_type,
+        compression=compression
+    )
+
+    
 
     client.send_json_ws(asdict(message))
 
@@ -146,13 +165,17 @@ def results(data: Union[Dict, str]) -> None:
         if pub is None:
             pub = node.create_publisher(type(inst), msg_packet.topic_name, 10)
             results_publishers[msg_packet.topic_name] = pub
+        if msg_packet.compression == Compressions.LZ4:
+            d = ujson.loads(decompress(msg_packet.data))
+        else:
+            d = msg_packet.data
 
         if isinstance(inst, PointCloud2):
             msg = create_cloud_xyz32(
-                populate_instance(msg_packet.data, inst).header, DracoPy.decode(msg_packet.data["data"]).points
+                populate_instance(d, inst).header, DracoPy.decode(msg_packet.data["data"]).points
             )
         else:
-            msg = populate_instance(msg_packet.data, inst)
+            msg = populate_instance(d, inst)
 
         pub.publish(msg)
     elif packet_type == PacketType.SERVICE_RESPONSE:
@@ -214,11 +237,7 @@ def main(args=None) -> None:
     transforms = load_transform_list()
 
     node.get_logger().debug(f"Loaded topics: {topics}")
-
-    if not (topics or services):
-        print("Specify at least one topic or service.")
-        return
-
+    
     global client
     subs: List[Subscription] = []
 
@@ -258,7 +277,7 @@ def main(args=None) -> None:
             client = NetAppClientBase(results, logging_level=logging.DEBUG, socketio_debug=False)
             client.register(f"{NETAPP_ADDRESS}", args={"subscribe_results": True})
 
-        for topic_name, topic_name_remapped, topic_type in topics:
+        for topic_name, topic_name_remapped, topic_type, compression in topics:
             if topic_name_remapped is None:
                 topic_name_remapped = topic_name
 
@@ -275,9 +294,10 @@ def main(args=None) -> None:
                     callback_others,
                     topic_type=topic_type,
                     topic_name=topic_name_remapped,
+                    compression=compression,
                 )
 
-            subs.append(node.create_subscription(topic_type_class, topic_name, callback, 10))
+            subs.append(node.create_subscription(topic_type_class, topic_name, callback, BEST_EFFORT))
         for service_name, service_type in services:
             service_type_class = ros_loader.get_service_class(service_type)
             node.create_service(
