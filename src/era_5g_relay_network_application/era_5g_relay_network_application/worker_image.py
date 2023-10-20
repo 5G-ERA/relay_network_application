@@ -8,6 +8,7 @@ from rclpy.time import Time
 from sensor_msgs.msg import Image
 
 from era_5g_relay_network_application.worker import Worker
+from era_5g_relay_network_application.utils import Compressions
 
 
 class WorkerImage(Worker):
@@ -18,7 +19,7 @@ class WorkerImage(Worker):
     """
 
     def __init__(self, queue: Queue, topic_name, topic_type, node: Node, **kw):
-        super().__init__(queue, topic_name, topic_type, node, **kw)
+        super().__init__(queue, topic_name, topic_type, Compressions.NONE, node, **kw)
         self.bridge = CvBridge()
 
     def get_data(self):

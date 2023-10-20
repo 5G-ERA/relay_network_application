@@ -22,7 +22,7 @@ from era_5g_relay_network_application.interface_common import RelayInterfaceComm
 
 from era_5g_relay_network_application.worker_image import WorkerImage
 from era_5g_relay_network_application.worker import Worker
-from era_5g_relay_network_application.utils import load_topic_list, load_transform_list
+from era_5g_relay_network_application.utils import load_topic_list, load_transform_list, Compressions
 from era_5g_relay_network_application.worker_results import WorkerResults
 from era_5g_relay_network_application.worker_results_socketio import WorkerResultsSocketIO
 from era_5g_relay_network_application.worker_service_socketio import WorkerServiceSocketIO
@@ -214,6 +214,7 @@ def main(args=None) -> None:
                 data=extract_values(TFMessage(transforms=transforms)),
                 topic_name="/tf",
                 topic_type="tf2_msgs/TFMessage",
+                compression=Compressions.NONE,
             )
             try:
                 results_queue.put_nowait(message)
