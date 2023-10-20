@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import auto
 from strenum import StrEnum
 from typing import Dict
+from era_5g_relay_network_application.utils import Compressions
 
 
 class PacketType(StrEnum):
@@ -34,6 +35,7 @@ class MessagePacket(Packet):
     # TODO: add docstring
     topic_name: str
     topic_type: str
+    compression: Compressions
     
 
 @dataclass

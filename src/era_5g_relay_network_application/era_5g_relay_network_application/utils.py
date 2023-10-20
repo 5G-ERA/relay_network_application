@@ -1,8 +1,22 @@
+from enum import Enum
 import json
 import os
 import uuid
 
 from typing import List, Tuple, Optional, Dict
+
+class Compressions(str, Enum):
+    NONE = 'none'
+    LZ4 = 'lz4'
+    DRACO = 'draco'
+
+    @classmethod
+    def _missing_(cls, value):
+        if value is None:
+            return cls('none')
+        return super()._missing_(value)
+    
+    
 
 
 def load_topic_list() -> List[Tuple[str, Optional[str], str]]:

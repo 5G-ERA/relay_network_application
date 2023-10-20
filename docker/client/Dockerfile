@@ -1,4 +1,4 @@
-FROM but5gera/relay_network_application:0.4.4
+FROM but5gera/ros1_relay_server:1.0.0
 
 RUN cd /root/catkin_ws/src/era_5g_relay_network_application \
     && python3 -m pip install .
