@@ -5,6 +5,7 @@ from rosbridge_library.internal import ros_loader
 from socketio import Server
 from era_5g_relay_network_application.data.packets import MessagePacket, PacketType
 from dataclasses import asdict
+from era_5g_relay_network_application.utils import Compressions
 
 
 class WorkerResults:
@@ -36,7 +37,7 @@ class WorkerResults:
     def callback(self, data: Any):
         msg = extract_values(data)
         message = MessagePacket(
-            packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type
+            packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type, compression=Compressions.NONE,
         )
 
         for s in self.subscribers:

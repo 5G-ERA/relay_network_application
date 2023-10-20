@@ -18,6 +18,7 @@ from era_5g_relay_network_application.utils import (
     load_topic_list,
     load_services_list,
     build_message,
+    Compressions,
 )
 import rospy
 from cv_bridge import CvBridge
@@ -67,13 +68,15 @@ def callback_image(data: Image, topic_name=None, topic_type=None):
     if topic_name is None or topic_type is None:
         logger.error("You need to specify topic name and type!")
         return
-    cv_image = bridge.imgmsg_to_cv2(data, desired_encoding="rgb8")
-    client.send_image_ws(
-        cv_image,
-        data.header.stamp.to_nsec(),
-        metadata={"topic_name": topic_name, "topic_type": topic_type},  # TODO fix type annotation in send_image_ws?
-    )
-
+    cv_image = bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
+    if cv_image is not None:
+        client.send_image_ws(
+            cv_image,
+            data.header.stamp.to_nsec(),
+            metadata={"topic_name": topic_name, "topic_type": topic_type},  # TODO fix type annotation in send_image_ws?
+        )
+    else:
+        logger.warning("Empty image received!")
 
 def callback_others(data: Any, topic_name=None, topic_type=None):
     assert logger
@@ -90,6 +93,7 @@ def callback_others(data: Any, topic_name=None, topic_type=None):
         data=d,
         topic_name=topic_name,
         topic_type=topic_type,
+        compression=Compressions.NONE,
     )
     client.send_json_ws(asdict(message))
 
@@ -165,9 +169,6 @@ def main() -> None:
     topics = load_topic_list()
     services = load_services_list()
 
-    if not (topics or services):
-        print("Specify at least one topic or service.")
-        return
 
     global client
     subs: List[rospy.Subscriber] = []
