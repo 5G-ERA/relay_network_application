@@ -15,6 +15,9 @@ RUN cd /root/era_5g_relay_network_application \
     && python3 -m pip install .
 
 COPY docker/network_application/start.sh /root/start.sh
+COPY docker/network_application/DEFAULT_FASTRTPS_PROFILES.xml /root/DEFAULT_FASTRTPS_PROFILES.xml
+
+ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/DEFAULT_FASTRTPS_PROFILES.xml
 
 RUN chmod +x /root/start.sh
 ENTRYPOINT [ "/root/start.sh" ] 

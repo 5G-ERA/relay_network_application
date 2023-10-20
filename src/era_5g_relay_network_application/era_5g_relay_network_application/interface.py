@@ -45,7 +45,6 @@ class RelayInterface(RelayInterfaceCommon):
         **kwargs,
     ) -> None:
         super().__init__(port, *args, **kwargs)
-        self.node = None
         self.sio.on("image", self.image_callback_websocket, namespace="/data")
         self.sio.on("json", self.json_callback_websocket, namespace="/data")
         self.queues = queues
