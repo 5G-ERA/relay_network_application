@@ -49,7 +49,8 @@ MIDDLEWARE_PASSWORD = os.getenv("MIDDLEWARE_PASSWORD", "password")
 MIDDLEWARE_TASK_ID = os.getenv("MIDDLEWARE_TASK_ID", "00000000-0000-0000-0000-000000000000")
 # middleware robot id (robot id)
 MIDDLEWARE_ROBOT_ID = os.getenv("MIDDLEWARE_ROBOT_ID", "00000000-0000-0000-0000-000000000000")
-
+# defines if topics from cloud should be send to this client
+SUBSCRIBE_RESULTS = os.getenv("SUBSCRIBE_RESULTS", "true").lower() in ("true", "1", "t")
 
 bridge = CvBridge()
 client: Optional[NetAppClientBase] = None
@@ -203,11 +204,11 @@ def main() -> None:
                 MIDDLEWARE_TASK_ID,
                 robot_id=MIDDLEWARE_ROBOT_ID,
                 resource_lock=True,
-                args={"subscribe_results": True},
+                args={"subscribe_results": SUBSCRIBE_RESULTS},
             )
         else:
             client = NetAppClientBase(results, logging_level=logging.DEBUG, socketio_debug=False)
-            client.register(f"{NETAPP_ADDRESS}", args={"subscribe_results": True})
+            client.register(f"{NETAPP_ADDRESS}", args={"subscribe_results": SUBSCRIBE_RESULTS})
 
         for topic_name, topic_name_remapped, topic_type in topics:
             if topic_name_remapped is None:
