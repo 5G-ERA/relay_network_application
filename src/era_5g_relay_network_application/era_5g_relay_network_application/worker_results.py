@@ -52,7 +52,7 @@ class WorkerResults:
             packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type, compression=self.compression
         )
 
-        if isinstance(data, PointCloud2):
+        if isinstance(data, PointCloud2) and compression == Compressions.DRACO:
             np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc....
             cpc = DracoPy.encode(np_arr, compression_level=1)
             message.data["data"] = cpc
