@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, List, Union
 from lz4.frame import compress, decompress
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 
+
 import numpy as np
 from sys import getsizeof
 
@@ -36,7 +37,7 @@ from tf2_msgs.msg import TFMessage
 from era_5g_tf2json.tf2_web_republisher import TFRepublisher
 
 from era_5g_client.client import NetAppClient
-from era_5g_client.client_base import NetAppClientBase
+from era_5g_client.client_base import NetAppClientBase, BackPressureException
 from era_5g_client.dataclasses import MiddlewareInfo
 from era_5g_client.exceptions import FailedToConnect
 from era_5g_relay_network_application.data.packets import (
@@ -95,14 +96,20 @@ def callback_image(data: Image, topic_name=None, topic_type=None):
         logger.error("You need to specify topic name and type!")
         return
     cv_image: Image = bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
+    
     if cv_image is not None:
-        client.send_image_ws(
-            cv_image,
-            Time.from_msg(data.header.stamp).nanoseconds,
-            metadata={"topic_name": topic_name, "topic_type": topic_type},  # TODO fix type annotation in send_image_ws?
-        )
+        try:
+            client.send_image_ws(
+                cv_image,
+                Time.from_msg(data.header.stamp).nanoseconds,
+                metadata={"topic_name": topic_name, "topic_type": topic_type},  # TODO fix type annotation in send_image_ws?
+            )
+        except BackPressureException:
+            logger.warning(f"Back pressure applied, dropping message from topic {topic_name}")
+            return
     else:
         logger.warning("Empty image received!")
+    
 
 
 
@@ -138,9 +145,11 @@ def callback_others(data: Any, topic_name=None, topic_type=None, compression: Co
     )
 
     
-
-    client.send_json_ws(asdict(message))
-
+    try:
+        client.send_json_ws(asdict(message))
+    except BackPressureException:
+        logger.warning(f"Back pressure applied, dropping message from topic {topic_name}")
+        return
 
 def results(data: Union[Dict, str]) -> None:
     # TODO: not sure why does client get here status messages like "you are connected" - is it intentional?
@@ -273,7 +282,7 @@ def main(args=None) -> None:
                 args={"subscribe_results": True},
             )
         else:
-            client = NetAppClientBase(results, logging_level=logging.DEBUG, socketio_debug=False)
+            client = NetAppClientBase(results, logging_level=logging.DEBUG, socketio_debug=False, back_pressure_size=3)
             client.register(f"{NETAPP_ADDRESS}", args={"subscribe_results": True})
 
         for topic_name, topic_name_remapped, topic_type, compression in topics:
