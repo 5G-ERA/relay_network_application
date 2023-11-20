@@ -1,3 +1,5 @@
+import json
+from queue import Full
 from typing import Any
 
 from rclpy.node import Node
@@ -9,6 +11,7 @@ from lz4.frame import compress
 from era_5g_relay_network_application.data.packets import MessagePacket, PacketType
 
 from sensor_msgs.msg import PointCloud2
+import os
 from sensor_msgs_py.point_cloud2 import read_points_numpy
 import DracoPy
 import numpy as np
@@ -51,8 +54,8 @@ class WorkerResults:
         message = MessagePacket(
             packet_type=PacketType.MESSAGE, data=msg, topic_name=self.topic_name, topic_type=self.topic_type, compression=self.compression
         )
-
-        if isinstance(data, PointCloud2) and compression == Compressions.DRACO:
+        
+        if isinstance(data, PointCloud2) and self.compression == Compressions.DRACO:
             np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc....
             cpc = DracoPy.encode(np_arr, compression_level=1)
             message.data["data"] = cpc

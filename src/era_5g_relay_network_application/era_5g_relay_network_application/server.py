@@ -1,5 +1,6 @@
 import os
 import threading
+
 import rclpy
 import binascii
 import logging
@@ -18,7 +19,6 @@ from rosbridge_library.internal.message_conversion import extract_values
 from era_5g_tf2json.tf2_web_republisher import TFRepublisher
 
 from era_5g_relay_network_application.data.packets import MessagePacket, PacketType, ServiceRequestPacket
-from era_5g_relay_network_application.interface_common import RelayInterfaceCommon
 
 from era_5g_relay_network_application.worker_image import WorkerImage
 from era_5g_relay_network_application.worker import Worker
@@ -28,12 +28,15 @@ from era_5g_relay_network_application.worker_results_socketio import WorkerResul
 from era_5g_relay_network_application.worker_service_socketio import WorkerServiceSocketIO
 from era_5g_relay_network_application.worker_service import WorkerService
 
+from era_5g_server.server import NetworkApplicationServer
+from era_5g_interface.utils.locked_set import LockedSet
+from era_5g_interface.dataclasses.control_command import ControlCmdType, ControlCommand
 
 # port of the netapp's server
 NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 
 
-class RelayInterface(RelayInterfaceCommon):
+class RelayServer(NetworkApplicationServer):
     def __init__(
         self,
         port: int,
@@ -42,12 +45,14 @@ class RelayInterface(RelayInterfaceCommon):
         services_requests_queue: Queue,
         services_responses_queue: Queue,
         *args,
+        host: str = "0.0.0.0", 
         **kwargs,
     ) -> None:
-        super().__init__(port, *args, **kwargs)
+        super().__init__(port, *args, host=host, **kwargs)
         self.sio.on("image", self.image_callback_websocket, namespace="/data")
         self.sio.on("json", self.json_callback_websocket, namespace="/data")
         self.queues = queues
+        self.result_subscribers = LockedSet()
         self.worker_results = WorkerResultsSocketIO(results_queue, self.result_subscribers, self.sio)
         self.worker_service = WorkerServiceSocketIO(services_responses_queue, self.sio)
         self.services_requests_queue = services_requests_queue
@@ -151,7 +156,18 @@ class RelayInterface(RelayInterfaceCommon):
             packet = ServiceRequestPacket(**data)
             self.services_requests_queue.put_nowait((self.sio.manager.sid_from_eio_sid(sid, "/results"), packet))
             return
+    
+      
+    def process_command(self, command: ControlCommand, eio_sid: str):
+        if command and command.cmd_type == ControlCmdType.INIT:
+            args = command.data
+            if args:
+                sr = args.get("subscribe_results")
+                if sr:
+                    self.result_subscribers.add(eio_sid)
 
+    def client_disconnected(self, eio_sid):        
+        self.result_subscribers.discard(eio_sid)
 
 def main(args=None) -> None:
     topics_results = load_topic_list()
@@ -195,7 +211,7 @@ def main(args=None) -> None:
     executor_thread = threading.Thread(target=executor.spin, daemon=True)
     executor_thread.start()
 
-    socketio_process = RelayInterface(
+    socketio_process = RelayServer(
         NETAPP_PORT, queues, results_queue, services_requests_queue, services_responses_queue
     )
 
