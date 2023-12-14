@@ -1,9 +1,10 @@
-era_5g_interface~=0.6.1
-era_5g_client~=0.7.0
+era_5g_interface~=0.7.0
+era_5g_client~=0.8.0
+era_5g_server~=0.1.0
 flask_socketio==5.3.*
 flask==2.2.*
 flask_session==0.4.*
-simple-websocket==0.9.0
+simple-websocket==0.10.0
 pymongo
 strenum~=0.4.15
 rospkg

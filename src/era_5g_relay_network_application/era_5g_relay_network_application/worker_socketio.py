@@ -1,17 +1,19 @@
 import logging
 from queue import Empty, Queue
 from threading import Event, Thread
-from dataclasses import asdict
+from typing import Callable, Optional
+
+from era_5g_interface.exceptions import BackPressureException
 
 
-class WorkerServiceSocketIO(Thread):
+class WorkerSocketIO(Thread):
     """
     Worker object for data processing in standalone variant. Reads
     data from passed queue, performs detection and returns results using
     the flask app.
     """
 
-    def __init__(self, queue: Queue, sio, **kw):
+    def __init__(self, queue: Queue, send_function: Optional[Callable[..., None]] = None, **kw):
         """
         Constructor
 
@@ -23,10 +25,16 @@ class WorkerServiceSocketIO(Thread):
         super().__init__(**kw)
         self.queue: Queue = queue
         self.stop_event = Event()
-        self.sio = sio
+        self.send_function = send_function
 
     def stop(self):
         self.stop_event.set()
+
+    def get_data(self):
+        try:
+            return self.queue.get(block=True, timeout=1)
+        except Empty:
+            return None
 
     def run(self):
         """
@@ -36,16 +44,14 @@ class WorkerServiceSocketIO(Thread):
         logging.debug(f"{self.name} thread is running.")
 
         while not self.stop_event.is_set():
-            try:
-                sid, data = self.queue.get(block=True, timeout=1)
-                if data is None:
-                    continue
-
-                self.sio.emit(
-                    "message",
-                    asdict(data),
-                    namespace="/results",
-                    to=self.sio.manager.sid_from_eio_sid(sid, "/results"),
-                )
-            except Empty:
+            data = self.get_data()
+            if data is None:
                 continue
+            self.send_data(data)
+                
+    def send_data(self, data):
+        assert(self.send_function is not None)
+        try:
+            self.send_function(data)
+        except BackPressureException:
+            print("apply backpressure")
