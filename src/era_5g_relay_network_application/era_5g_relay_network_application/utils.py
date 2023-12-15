@@ -5,16 +5,24 @@ import uuid
 
 from typing import List, Tuple, Optional, Dict
 
+from era_5g_interface.channels import ChannelType
+from rosbridge_library.internal import ros_loader
+from sensor_msgs.msg import Image
+
 class Compressions(str, Enum):
     NONE = 'none'
     LZ4 = 'lz4'
     DRACO = 'draco'
+    JPEG = 'jpeg'
+    H264 = 'h264'
 
     @classmethod
     def _missing_(cls, value):
         if value is None:
             return cls('none')
         return super()._missing_(value)
+    
+IMAGE_CHANNEL_TYPES = (ChannelType.JPEG, ChannelType.H264)
     
     
 
@@ -82,5 +90,29 @@ def build_service_response(service_name: str, service_type: str, res: str, id: s
         "res": res,
         "id": id,
     }  # TODO this should be rather dataclass
+
+
+def get_channel_type(compression: Compressions, topic_type: str) -> ChannelType:
+    """ Returns the channel type based on the compression and topic type
+
+    Args:
+        compression (Compressions): Compression type
+        topic_type (str): Topic type as a string (e.g. std_msgs/msg/String)
+
+    Returns:
+        ChannelType: The channel type with the correct compression
+    """
+    topic_type_inst = ros_loader.get_message_instance(topic_type)
+    if isinstance(topic_type_inst, Image):
+        if compression == Compressions.H264:
+            channel_type = ChannelType.H264
+        else:
+            channel_type = ChannelType.JPEG                  
+    else:
+        if compression == Compressions.LZ4:
+            channel_type = ChannelType.JSON_LZ4
+        else:
+            channel_type = ChannelType.JSON
+    return channel_type
 
 

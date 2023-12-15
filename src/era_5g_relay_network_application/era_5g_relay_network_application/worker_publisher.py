@@ -1,9 +1,6 @@
 import logging
 from queue import Empty, Queue
 from threading import Event, Thread
-import time
-from lz4.frame import decompress
-import json
 
 from rclpy.node import Node
 from rosbridge_library.internal import ros_loader
@@ -18,7 +15,7 @@ from era_5g_relay_network_application.utils import Compressions
 
 
 
-class Worker(Thread):
+class WorkerPublisher(Thread):
     """
     Worker object for data processing in standalone variant. Reads
     data from passed queue, performs detection and returns results using
@@ -41,6 +38,9 @@ class Worker(Thread):
         self.pub = node.create_publisher(type(inst), topic_name, 1)
         self.inst = inst
         self.compression = compression
+        
+    def put_data(self, data):
+        self.queue.put_nowait(data)
 
     def stop(self):
         self.stop_event.set()
@@ -51,8 +51,6 @@ class Worker(Thread):
             
             if isinstance(self.inst, PointCloud2) and self.compression == Compressions.DRACO:
                 return create_cloud_xyz32(populate_instance(d, self.inst).header, DracoPy.decode(d["data"]).points)
-            if self.compression == Compressions.LZ4:
-                d = json.loads(decompress(d))
             if isinstance(self.inst, LaserScan):
                 d["ranges"][:] = [x if x is not None else float("inf") for x in d["ranges"]]
             return populate_instance(d, self.inst)
