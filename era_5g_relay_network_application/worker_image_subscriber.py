@@ -1,22 +1,23 @@
 from queue import Full
 from typing import Any
 
-from rclpy.node import Node
-from rosbridge_library.internal import ros_loader
-from sensor_msgs.msg import Image
+from cv_bridge import CvBridge  # pants: no-infer-dep
+from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.time import Time  # pants: no-infer-dep
+from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
+from sensor_msgs.msg import Image  # pants: no-infer-dep
 
-from cv_bridge import CvBridge
-from rclpy.time import Time
-from queue import Queue
+from era_5g_relay_network_application import AnyQueue
 
 
 class WorkerImageSubscriber:
-    """ Worker object that subscribe to image topic. transform the image to numpy array and put it into queue
-    for sending to the other part of the relay.
+    """Worker object that subscribe to image topic.
+
+    transform the image to numpy array and put it into queue for sending to the other part of the relay.
     """
 
-    def __init__(self, topic_name: str, topic_type: str, node: Node, queue: Queue, **kw):
-        """Constructor
+    def __init__(self, topic_name: str, topic_type: str, node: Node, queue: AnyQueue, **kw):
+        """Constructor.
 
         Args:
             topic_name (str): The name of the topic to subscribe to
@@ -24,7 +25,6 @@ class WorkerImageSubscriber:
             node (Node): The ROS node for subscription
             queue (Queue): The queue for storing the received image
         """
-
 
         super().__init__(**kw)
 
@@ -47,5 +47,3 @@ class WorkerImageSubscriber:
             self.queue.put_nowait((Time.from_msg(data.header.stamp).nanoseconds, cv_image))
         except Full:
             pass
-        
-        

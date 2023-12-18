@@ -1,26 +1,23 @@
-from queue import Empty, Queue
+from queue import Empty
+from typing import Optional
 
-import cv2
-import numpy as np
-from cv_bridge import CvBridge
-from rclpy.node import Node
-from rclpy.time import Time
-from sensor_msgs.msg import Image
+from cv_bridge import CvBridge  # pants: no-infer-dep
+from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.time import Time  # pants: no-infer-dep
+from sensor_msgs.msg import Image  # pants: no-infer-dep
 
+from era_5g_relay_network_application import AnyQueue
 from era_5g_relay_network_application.worker_publisher import WorkerPublisher
 
 
 class WorkerImagePublisher(WorkerPublisher):
-    """ Worker object for publishing images. 
+    """Worker object for publishing images."""
 
-
-    """
-    
-    def __init__(self, queue: Queue, topic_name, topic_type, compression, node: Node, **kw):
+    def __init__(self, queue: AnyQueue, topic_name, topic_type, compression, node: Node, **kw) -> None:
         super().__init__(queue, topic_name, topic_type, compression, node, **kw)
         self.bridge = CvBridge()
 
-    def get_data(self):
+    def get_data(self) -> Optional[Image]:
         try:
             img, ts = self.queue.get(block=True, timeout=1)
             msg: Image = self.bridge.cv2_to_imgmsg(img, encoding="bgr8")

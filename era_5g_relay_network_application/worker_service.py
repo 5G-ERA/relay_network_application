@@ -1,22 +1,33 @@
-from functools import partial
 import logging
+from functools import partial
+from multiprocessing.queues import Queue as MpQueue
 from queue import Empty, Full, Queue
 from threading import Event, Thread
-from rclpy.task import Future
+from typing import Any, Dict, Tuple, Union
 
-from rclpy.node import Node
-import rclpy
-from rosbridge_library.internal import ros_loader
-from rosbridge_library.internal.message_conversion import populate_instance, extract_values
+from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.task import Future  # pants: no-infer-dep
+from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
+from rosbridge_library.internal.message_conversion import extract_values, populate_instance  # pants: no-infer-dep
 
+ServiceData = Tuple[str, Dict[str, Any]]
+
+SrvQueue = Union[Queue[ServiceData], MpQueue[ServiceData]]
 
 
 class WorkerService(Thread):
-    """ Worker object for processing service requests.
-    """
+    """Worker object for processing service requests."""
 
-    def __init__(self, service_name: str, service_type: str, requests_queue: Queue, responses_queue: Queue, node: Node, **kw):
-        """ Constructor
+    def __init__(
+        self,
+        service_name: str,
+        service_type: str,
+        requests_queue: SrvQueue,
+        responses_queue: SrvQueue,
+        node: Node,
+        **kw,
+    ) -> None:
+        """Constructor.
 
         Args:
             service_name (str): The name of the service for which the client is created
@@ -32,35 +43,31 @@ class WorkerService(Thread):
         self.requests_queue = requests_queue
         self.responses_queue = responses_queue
         self.inst = ros_loader.get_service_request_instance(service_type)
-        
-        self.client = self.node.create_client(ros_loader.get_service_class(service_type), service_name)
-        
-        
-        while not self.client.wait_for_service(timeout_sec=1.0):
-            self.node.get_logger().info(f'Service {service_name} is not available, waiting again...')
-        
 
-    def stop(self):
+        self.client = self.node.create_client(ros_loader.get_service_class(service_type), service_name)
+
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.node.get_logger().info(f"Service {service_name} is not available, waiting again...")
+
+    def stop(self) -> None:
         self.stop_event.set()
 
-    def run(self):
-        """
-        Periodically reads data from python internal queue and process them.
-        """
+    def run(self) -> None:
+        """Periodically reads data from python internal queue and process them."""
 
         logging.debug(f"{self.name} thread is running.")
 
         while not self.stop_event.is_set():
             try:
                 sid, data = self.requests_queue.get(block=True, timeout=1)
-                
+
                 future: Future = self.client.call_async(populate_instance(data, self.inst))
                 future.add_done_callback(partial(self.callback_future, sid=sid))
             except (Empty, Full):
                 pass
-            
-    def callback_future(self, future: Future, sid: str):
-        """ Called once the service call is done. Puts the response to the responses queue.
+
+    def callback_future(self, future: Future, sid: str) -> None:
+        """Called once the service call is done. Puts the response to the responses queue.
 
         Args:
             future (Future): The response from the service call
@@ -69,6 +76,3 @@ class WorkerService(Thread):
         d = extract_values(future.result())
         logging.debug(sid, d)
         self.responses_queue.put_nowait((sid, d))
-
-
-            
