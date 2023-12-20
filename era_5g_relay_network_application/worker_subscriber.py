@@ -1,28 +1,25 @@
 from queue import Full
 from typing import Any
 
-from rclpy.node import Node
-from rosbridge_library.internal import ros_loader
-from rosbridge_library.internal.message_conversion import extract_values
+import DracoPy  # pants: no-infer-dep
+from rclpy.node import Node  # pants: no-infer-dep
+from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
+from rosbridge_library.internal.message_conversion import extract_values  # pants: no-infer-dep
+from sensor_msgs.msg import PointCloud2  # pants: no-infer-dep
+from sensor_msgs_py.point_cloud2 import read_points_numpy  # pants: no-infer-dep
 
-
-from sensor_msgs.msg import PointCloud2
-#from sensor_msgs_py.point_cloud2 import read_points_numpy
-import DracoPy
+from era_5g_relay_network_application import AnyQueue
 from era_5g_relay_network_application.utils import Compressions
 
 
-
 class WorkerSubscriber:
-    """
-    Worker object for data processing in standalone variant. Reads
-    data from passed queue, performs detection and returns results using
-    the flask app.
+    """Worker object for data processing in standalone variant.
+
+    Reads data from passed queue, performs detection and returns results using the flask app.
     """
 
-    def __init__(self, topic_name: str, topic_type: str, compression: Compressions, node: Node, queue, **kw):
-        """
-        Constructor
+    def __init__(self, topic_name: str, topic_type: str, compression: Compressions, node: Node, queue: AnyQueue, **kw):
+        """Constructor.
 
         Args:
             data_queue (Queue): The queue with all to-be-processed data
@@ -42,10 +39,8 @@ class WorkerSubscriber:
         self.topic_type = topic_type
 
     def callback(self, data: Any):
-        print("callback")
         msg = extract_values(data)
-        
-        
+
         if isinstance(data, PointCloud2) and self.compression == Compressions.DRACO:
             np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc....
             cpc = DracoPy.encode(np_arr, compression_level=1)

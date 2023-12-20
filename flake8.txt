@@ -1,0 +1,7 @@
+flake8==5.0.4
+flake8-tidy-imports==4.9.0
+flake8-annotations-coverage==0.0.6
+flake8-pytest-style==1.7.2
+flake8-bugbear==23.3.12  # newer version dropped support for Python 3.8
+flake8-absolute-import==1.0.0.1
+vulture==2.7
