@@ -18,16 +18,15 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        python-version: ['3.8']
+        python-version: ['3.10']
     steps:
     - uses: actions/checkout@v3
-    - uses: ros-tooling/setup-ros@v0.6
+    - uses: ros-tooling/setup-ros@v0.7
       with:
         required-ros-distributions: humble
-    - run: "source /opt/ros/humble/setup.bash && ros2 run --help"
     - run: | 
-        apt-get update
-        apt-get install -y ros-humble-rosbridge-library ros-humble-cv-bridge ros-humble-sensor-msgs-py
+        sudo apt-get update
+        sudo apt-get install -y ros-humble-rosbridge-library ros-humble-cv-bridge ros-humble-sensor-msgs-py
     - uses: pantsbuild/actions/init-pants@v5-scie-pants
       with:
         gha-cache-key: cache0-py${{ matrix.python-version }}
@@ -40,6 +39,7 @@ jobs:
         pants lint check ::
     - name: Test
       run: |
+        source /opt/ros/humble/setup.bash
         pants test ::
     - name: Build and install packages
       run: |

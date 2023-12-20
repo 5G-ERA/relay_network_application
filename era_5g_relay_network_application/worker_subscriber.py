@@ -1,7 +1,7 @@
 from queue import Full
 from typing import Any
 
-import DracoPy  # pants: no-infer-dep
+import DracoPy
 from rclpy.node import Node  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import extract_values  # pants: no-infer-dep
