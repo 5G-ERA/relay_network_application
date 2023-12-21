@@ -4,6 +4,7 @@ python_requirements(
     module_mapping={
         "opencv-python": ["cv2"],
         "python-socketio": ["socketio"],
+        "dracopy": ["DracoPy"],
     },
 )
 

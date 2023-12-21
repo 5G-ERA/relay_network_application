@@ -43,6 +43,11 @@ logger = logging.getLogger("relay client python")
 USE_MIDDLEWARE = os.getenv("USE_MIDDLEWARE", "false").lower() in ("true", "1", "t")
 # ip address or hostname of the computer, where the netapp is deployed
 NETAPP_ADDRESS = os.getenv("NETAPP_ADDRESS", "http://localhost:5896")
+
+# parameters for register method
+WAIT_UNTIL_AVAILABLE = os.getenv("WAIT_UNTIL_AVAILABLE", "false").lower() in ("true", "1")
+WAIT_TIMEOUT = int(os.getenv("WAIT_UNTIL_AVAILABLE_TO", -1))
+
 # ip address or hostname of the middleware server
 MIDDLEWARE_ADDRESS = os.getenv("MIDDLEWARE_ADDRESS", "127.0.0.1")
 # middleware user ID
@@ -216,7 +221,7 @@ def main(args=None) -> None:
             )
         else:
             client = NetAppClientBase(callbacks_info)
-            client.register(f"{NETAPP_ADDRESS}", args={"subscribe_results": True})
+            client.register(f"{NETAPP_ADDRESS}", {"subscribe_results": True}, WAIT_UNTIL_AVAILABLE, WAIT_TIMEOUT)
 
         # create socketio workers for all topics and services to be sent to the relay server
         for topic_name, _, topic_type, compression in topics_outgoing_list:

@@ -3,7 +3,7 @@ from queue import Empty
 from threading import Event, Thread
 from typing import Any, Optional
 
-import DracoPy  # pants: no-infer-dep
+import DracoPy
 from rclpy.node import Node  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import FieldTypeMismatchException  # pants: no-infer-dep

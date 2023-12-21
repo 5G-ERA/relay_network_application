@@ -1,15 +1,15 @@
 import json
 import sys
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
-import cv2
-import numpy as np
-import rclpy
-from cv_bridge import CvBridge
-from rclpy.node import Node
-from rclpy.publisher import Publisher
-from sensor_msgs.msg import Image
-from std_msgs.msg import String
+import cv2  # pants: no-infer-dep
+import numpy as np  # pants: no-infer-dep
+import rclpy  # pants: no-infer-dep
+from cv_bridge import CvBridge  # pants: no-infer-dep
+from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.publisher import Publisher  # pants: no-infer-dep
+from sensor_msgs.msg import Image  # pants: no-infer-dep
+from std_msgs.msg import String  # pants: no-infer-dep
 
 bridge = CvBridge()
 image_buffer: Dict[int, np.ndarray] = dict()
@@ -18,11 +18,13 @@ output_images_pub: Optional[Publisher] = None
 node: Optional[Node] = None
 
 
-def results_callback(msg):
+def results_callback(msg: Any) -> None:
+    assert node
+
     try:
         results = json.loads(msg.data)
     except ValueError:
-        node.get_logger().error(f"Results should contain JSON data.")
+        node.get_logger().error("Results should contain JSON data.")
         raise
 
     assert isinstance(results["timestamp"], int)
@@ -66,7 +68,7 @@ def results_callback(msg):
     output_images_pub.publish(bridge.cv2_to_imgmsg(frame, encoding="bgr8"))
 
 
-def image_callback(image):
+def image_callback(image: Any) -> None:
     global image_buffer
 
     image_buffer[image.header.stamp.to_nsec()] = bridge.imgmsg_to_cv2(image, desired_encoding="bgr8")
@@ -84,8 +86,8 @@ def main(args=None) -> None:
     node = rclpy.create_node("detection_viewer")
 
     try:
-        input_images_sub = node.create_subscription(Image, "input_images", image_callback, 10)
-        results_sub = node.create_subscription(String, "results", results_callback, 10)
+        node.create_subscription(Image, "input_images", image_callback, 10)
+        node.create_subscription(String, "results", results_callback, 10)
         output_images_pub = node.create_publisher(Image, "output_images", 10)
 
         while rclpy.ok():
@@ -94,7 +96,7 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     except BaseException:
-        print('Exception:', file=sys.stderr)
+        print("Exception:", file=sys.stderr)
         raise
     finally:
         rclpy.shutdown()

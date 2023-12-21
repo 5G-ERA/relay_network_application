@@ -10,9 +10,11 @@ from rclpy.task import Future  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import extract_values, populate_instance  # pants: no-infer-dep
 
+# TODO can't be used (Union[Queue[ServiceData], MpQueue[ServiceData]]) with Python 3.10 (or older)
+# ...mypy is happy but it throws TypeError
 ServiceData = Tuple[str, Dict[str, Any]]
 
-SrvQueue = Union[Queue[ServiceData], MpQueue[ServiceData]]
+SrvQueue = Union[Queue, MpQueue]
 
 
 class WorkerService(Thread):
