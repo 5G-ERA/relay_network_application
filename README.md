@@ -18,48 +18,58 @@ The Relay Network Application consists of three parts: Relay Client, Relay Serve
 ### Relay Client
 
 The Relay Client runs on robot and initiates the connection to the Relay Server. For configuration,
-there are three environment variables, `TOPIC_LIST`, `SERVICE_LIST`, and `TRANSFORM_LIST`. The first one is used to specify the
-topics, which should be mirrored to the remote ROS environment. The second specifies the list of
-remote services, which should be provided to the robot and the last one which TF transforms should be listened to. The variables are specified in JSON format:
+there are the following environment variables, `TOPICS_TO_SERVER`, `TOPICS_FROM_SERVER`, `SERVICES_TO_SERVER`, `ACTIONS_TO_SERVER` and `TRANSFORMS_TO_SERVER`. `TOPICS_TO_SERVER` is used to specify the topics that should be mirrored to the remote ROS environment. Similarly, `TOPICS_FROM_SERVER` defines the topics to be received by the client from the server (and has the same format).
+`SERVICES_TO_SERVER` and `ACTIONS_TO_SERVER` specify the list of remote services and actions that should be provided to the robot. 
+`TRANSFORMS_TO_SERVER` specifies which TF transforms should be listened to. The variables are specified in JSON format:
 
 ```json
-TOPIC_LIST = [
+TOPICS_TO_SERVER = [
   {
-    "topic_name": "/axis/image_raw",
-    "topic_name_remapped": "/image_raw",
-    "topic_type": "sensor_msgs/Image"
+    "name": "/axis/image_raw",
+    "type": "sensor_msgs/Image"
   },
   {
-    "topic_name": "/test_str",
-    "topic_type": "std_msgs/String"
+    "name": "/test_str",
+    "type": "std_msgs/String"
   }
 ]
 ```
 
-The `topic_name` field specify the local name of the topic i.e., the name under which the robot provides
-certain data. The optional `topic_name_remapped` field specify the remote name of the topic, i.e., the name
-under which the remote application expects the data. If the field is omitted, the `topic_name` is used
-for remote publisher. This is an alternative to the ROS remapping, using either rosrun argument or launch
-parameter. The `topic_type` field contains the textual representation of the topic's type, e.g., sensor_msgs/Image.
+The `name` field specifies the local name of the topic i.e., the name under which the robot provides
+certain data. The `type` field contains the textual representation of the topic's type, e.g., sensor_msgs/Image.
 
 ```json
-SERVICE_LIST = [
+SERVICES_TO_SERVER = [
   {
-    "service_name": "/test_srvs",
-    "service_type": "std_srvs/SetBool"
+    "name": "/test_srvs",
+    "type": "std_srvs/SetBool"
   },
   {
-    "service_name": "/test_srvs2",
-    "service_type": "std_srvs/SetBool"
+    "name": "/test_srvs2",
+    "type": "std_srvs/SetBool"
   }
 ]
 ```
 
-The `service_name` field specify the name of the remote service, that should be advertised to the robot.
-The `service_type` field contains the textual representation of the service's type, e.g., std_srvs/Trigger.
+The `name` field specifies the name of the remote service, that should be advertised to the robot.
+The `type` field contains the textual representation of the service's type, e.g., std_srvs/Trigger.
+
 
 ```json
-TRANSFORM_LIST = [
+ACTIONS_TO_SERVER = [
+  {
+    "name": "/turtle1/rotate_absolute",
+    "type": "turtlesim/action/RotateAbsolute"
+  }
+]
+```
+
+The `name` field specifies the name of the action that the robot expects to be provided by the Relay Server.
+The `type` field contains the textual representation of the actions's type.
+
+
+```json
+TRANSFORMS_TO_SERVER = [
   {
     "source_frame": "map",
     "target_frame": "robot",
@@ -90,41 +100,68 @@ All env variables with MIDDLEWARE prefix are ignored if USE_MIDDLEWARE is set to
 ### Relay Server
 
 The Relay Server is supposed to be deployed on remote edge/cloud device. It recieves protocol messages
-from one or more Relay Clients and publishes them to the remote ROS environment. The configuration is
-provided using the TOPIC_LIST environment variable:
+from one or more Relay Clients and publishes them to the remote ROS environment. 
+
+The list of topics that should be obtained from the robot and published on the remote device is pecified
+using the `TOPICS_FROM_CLIENT` env variable:
 
 ```json
-TOPIC_LIST = [
+TOPICS_FROM_CLIENT = [
   {
-    "topic_name": "/axis/image_raw",
-    "topic_name_remapped": "/image_raw",
-    "topic_type": "sensor_msgs/Image"
+    "name": "/axis/image_raw",
+    "type": "sensor_msgs/Image"
   },
   {
-    "topic_name": "/test_str",
-    "topic_type": "std_msgs/String"
+    "name": "/test_str",
+    "type": "std_msgs/String"
   }
 ]
 ```
 
-The variable description is the same as in the Relay Client. It specifies the topics, that should be
-mirrored from edge/cloud to the robot. The `topic_name_remapped` could be specified, but it is currently
-ignored.
+The variable description is the same as `TOPICS_TO_SERVER` in the Relay Client.
 
-Besides, the list of topics that should be obtained from the robot and published on the remote device needs to be specified for the server part, using the `TOPIC_TO_PUB_LIST` env variable with the same format as the `TOPIC_LIST` variable:
+Additionally, to configure the topics that should be mirrored from edge/cloud to the robot, `TOPICS_TO_CLIENT` env variable needs to be used:
 
 ```json
-TOPIC_TO_PUB_LIST = [
+TOPICS_TO_CLIENT = [
   {
-    "topic_name": "/axis/image_raw",
-    "topic_type": "sensor_msgs/Image"
+    "name": "/axis/image_raw",
+    "type": "sensor_msgs/Image"
   },
   {
-    "topic_name": "/test_str",
-    "topic_type": "std_msgs/String"
+    "name": "/test_str",
+    "type": "std_msgs/String"
   }
 ]
 ```
+
+
+Services to provide are defined in `SERVICES_FROM_CLIENT` variable, whose structure is the same as client's `SERVICES_TO_SERVER`.
+
+```json
+SERVICES_FROM_CLIENT = [
+  {
+    "name": "/test_srvs",
+    "type": "std_srvs/SetBool"
+  }
+]
+```
+
+To provide actions to a client, `ACTIONS_FROM_CLIENT` variable can be used by Relay Server:
+
+```json
+ACTIONS_FROM_CLIENT = [
+  {
+    "name": "/turtle1/rotate_absolute",
+    "type": "turtlesim/action/RotateAbsolute"
+  }
+]
+```
+
+This variable is the server's counterpart for client's `ACTIONS_TO_SERVER` and has the same format.
+
+
+Moreover, `TRANSFORMS_FROM_CLIENT` variable is used to define transformations that are to be received from the client (see `TRANSFORMS_TO_SERVER` for the client side).
 
 
 ![The simple Relay Server scenario](docs/images/relay_server.png)

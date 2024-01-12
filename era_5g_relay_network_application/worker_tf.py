@@ -12,19 +12,9 @@ from era_5g_tf2json.tf2_web_republisher import TFRepublisher
 
 
 class WorkerTF:
-    """Worker object for data processing in standalone variant.
-
-    Reads data from passed queue, performs detection and returns results using the flask app.
-    """
+    """Worker object for processing transforms."""
 
     def __init__(self, transforms_to_listen: List, queue: AnyQueue, node: Node, **kw):
-        """Constructor.
-
-        Args:
-            data_queue (Queue): The queue with all to-be-processed data
-            app (_type_): The flask app for results publishing
-        """
-
         super().__init__(**kw)
         self.stop_event = Event()
         self.node = node

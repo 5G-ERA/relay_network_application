@@ -13,10 +13,12 @@ from era_5g_interface.dataclasses.control_command import ControlCmdType, Control
 from era_5g_interface.utils.locked_set import LockedSet
 from era_5g_relay_network_application.utils import (
     IMAGE_CHANNEL_TYPES,
+    ActionServiceVariant,
+    ActionSubscribers,
+    ActionTopicVariant,
     Compressions,
     get_channel_type,
-    load_services_list,
-    load_topic_list,
+    load_entities_list,
     load_transform_list,
 )
 from era_5g_relay_network_application.worker_image_publisher import WorkerImagePublisher
@@ -52,7 +54,7 @@ class RelayTopic:
 
 
 class RelayTopicIncoming(RelayTopic):
-    """Class that holds information about incoming topic(i.e. topic that is received from the relay client and is
+    """Class that holds information about incoming topic (i.e. topic that is received from the relay client and is
     published here), its type and related publisher."""
 
     def __init__(
@@ -89,8 +91,12 @@ class RelayTopicOutgoing(RelayTopic):
         channel_type: ChannelType,
         node: rclpy.node.Node,
         compression: Compressions = Compressions.NONE,
+        action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
+        action_subscribers: Optional[ActionSubscribers] = None,
     ):
         super().__init__(topic_name, topic_type, channel_type, compression)
+
+        self.action_topic_variant = action_topic_variant
 
         # this sucks, the classes should have some common ancestor or there should be two properties
         self.worker: Union[WorkerImageSubscriber, WorkerSubscriber]
@@ -98,22 +104,45 @@ class RelayTopicOutgoing(RelayTopic):
         if self.channel_type in IMAGE_CHANNEL_TYPES:
             self.worker = WorkerImageSubscriber(topic_name, topic_type, node, self.queue)
         else:
-            self.worker = WorkerSubscriber(topic_name, topic_type, compression, node, self.queue)
+            self.worker = WorkerSubscriber(
+                topic_name, topic_type, compression, node, self.queue, action_topic_variant, action_subscribers
+            )
+            # Topic name may be changed in case of action-related topics
+            self.channel_name = f"topic/{self.worker.topic_name}"
+            self.topic_name = self.worker.topic_name
 
 
 class RelayService:
     """Class that holds information about incoming service (i.e. service that is called from relay client), its type and
     related worker."""
 
-    def __init__(self, service_name: str, service_type: str, node: rclpy.node.Node):
-        self.service_name = service_name
+    def __init__(
+        self,
+        service_name: str,
+        service_type: str,
+        node: rclpy.node.Node,
+        action_service_variant: ActionServiceVariant = ActionServiceVariant.NONE,
+        action_subscribers: Optional[ActionSubscribers] = None,
+    ):
         self.service_type = service_type
-        self.channel_name_request = f"service_request/{self.service_name}"
-        self.channel_name_response = f"service_response/{self.service_name}"
+
         self.queue_request: Queue[ServiceData] = Queue(QUEUE_LENGTH_SERVICES)
         self.queue_response: Queue[ServiceData] = Queue(QUEUE_LENGTH_SERVICES)
 
-        self.worker = WorkerService(self.service_name, self.service_type, self.queue_request, self.queue_response, node)
+        self.worker = WorkerService(
+            service_name,
+            service_type,
+            self.queue_request,
+            self.queue_response,
+            node,
+            action_service_variant,
+            action_subscribers,
+        )
+
+        # Service name can be changed by worker in case of action-related services
+        self.service_name = self.worker.service_name
+        self.channel_name_request = f"service_request/{self.service_name}"
+        self.channel_name_response = f"service_response/{self.service_name}"
 
         self.worker.daemon = True
         self.worker.start()
@@ -158,7 +187,7 @@ class RelayServer(NetworkApplicationServer):
 
             # services are bidirectional so we need to create worker for response
             # unlike the outgoing topics, service response is only send to the client who called it, so we need a different send method
-            send_function = partial(self.send_service_data, event=service.channel_name_response)
+            send_function = partial(self.send_data_with_sid, event=service.channel_name_response)
             worker = WorkerSocketIO(service.queue_response, send_function)
             self.workers_outgoing[service.channel_name_response] = worker
 
@@ -169,23 +198,28 @@ class RelayServer(NetworkApplicationServer):
         # collects info about topics that are subscribed to be send to the relay client
         for topic_out in topics_outgoing.values():
             if topic_out.channel_type in [ChannelType.JSON, ChannelType.JSON_LZ4]:
-                callback = partial(
+                send_function = partial(
                     self.send_data,
                     event=topic_out.channel_name,
                     channel_type=topic_out.channel_type,
                     can_be_dropped=True,
                 )
             else:
-                callback = partial(
+                send_function = partial(
                     self.send_image_data,
                     event=topic_out.channel_name,
-                    can_be_dropped=True,
                     channel_type=topic_out.channel_type,
+                    can_be_dropped=True,
                 )
 
-            self.workers_outgoing[topic_out.topic_name] = WorkerSocketIOServer(
-                topic_out.queue, self.result_subscribers, callback
-            )
+            if topic_out.action_topic_variant == ActionTopicVariant.ACTION_FEEDBACK:
+                # Action feedback is not sent to everyone, but to a specific sid
+                send_function = partial(self.send_data_with_sid, event=topic_out.channel_name)
+                worker = WorkerSocketIO(topic_out.queue, send_function)
+            else:
+                worker = WorkerSocketIOServer(topic_out.queue, self.result_subscribers, send_function)
+
+            self.workers_outgoing[topic_out.topic_name] = worker
 
         if tf_queue:
             send_function = partial(self.send_data, event="topic//tf")
@@ -194,11 +228,13 @@ class RelayServer(NetworkApplicationServer):
         self.topics_outgoing = topics_outgoing
         self.topics_incoming = topics_incoming
 
-    def send_service_data(self, data: Tuple[str, Dict], event: str) -> None:
-        """Sends service response to the relay client.
+    def send_data_with_sid(self, data: Tuple[str, Dict], event: str) -> None:
+        """Sends response to the relay client.
+
+        This is intended mainly for sending service response and action feedback.
 
         Args:
-            data (Tuple[str, Dict]): Tuple of data namespace SID and service response
+            data (Tuple[str, Dict]): Tuple of namespace SID and message data (e.g. service response)
             event (str): Name of the event (channel) to send the data to
         """
         self.send_data(data=data[1], event=event, sid=data[0])
@@ -285,12 +321,50 @@ class RelayServer(NetworkApplicationServer):
         self.result_subscribers.discard(eio_sid)
 
 
+def provide_action(
+    action_name: str,
+    action_type: str,
+    node: rclpy.node.Node,
+    services_incoming: Dict[str, RelayService],
+    topics_outgoing: Dict[str, RelayTopicOutgoing],
+):
+    """Provide services and topics related to action."""
+
+    # Shared data structure with information about which action goal was initiated by which client
+    action_subscribers = ActionSubscribers()
+
+    # Provide services
+    services_to_provide = [
+        ActionServiceVariant.ACTION_SEND_GOAL,
+        ActionServiceVariant.ACTION_CANCEL_GOAL,
+        ActionServiceVariant.ACTION_GET_RESULT,
+    ]
+    for service_variant in services_to_provide:
+        relay_service = RelayService(action_name, action_type, node, service_variant, action_subscribers)
+        services_incoming[relay_service.worker.service_name] = relay_service
+
+    # Create subscribers for the action topics (feedback and status)
+    topics_to_subscribe = [ActionTopicVariant.ACTION_FEEDBACK, ActionTopicVariant.ACTION_STATUS]
+    for topic_variant in topics_to_subscribe:
+        outgoing_topic = RelayTopicOutgoing(
+            action_name,
+            action_type,
+            ChannelType.JSON,
+            node,
+            Compressions.NONE,
+            topic_variant,
+            action_subscribers,
+        )
+        topics_outgoing[outgoing_topic.topic_name] = outgoing_topic
+
+
 def main(args=None) -> None:
     """Main function that starts the relay server and all workers."""
-    topics_outgoing_list = load_topic_list()  # Topics that are subscribed to be send to the relay client
-    topics_incoming_list = load_topic_list("TOPIC_TO_PUB_LIST")  # Topics that are received from the relay client
-    services_incoming_list = load_services_list("SERVICE_TO_PUB_LIST")  # Services that are called from the relay client
-    transforms_to_listen = load_transform_list()  # TFs that are received from the relay client
+    topics_outgoing_list = load_entities_list("TOPICS_TO_CLIENT")  # Topics from server that are sent to the client
+    topics_incoming_list = load_entities_list("TOPICS_FROM_CLIENT")  # Topics that are received from the client
+    services_incoming_list = load_entities_list("SERVICES_FROM_CLIENT")  # Services that are called from the client
+    actions_to_provide = load_entities_list("ACTIONS_FROM_CLIENT")  # Actions provided by this server to the client
+    transforms_to_listen = load_transform_list("TRANSFORMS_FROM_CLIENT")  # TFs that are received from the client
 
     rclpy.init(args=args)
     node = rclpy.create_node("relay_netapp")
@@ -300,23 +374,26 @@ def main(args=None) -> None:
     node.get_logger().debug(f"Loaded transforms for listening: {transforms_to_listen}")
 
     # can't know if client will want to send some TFs so we have to create worker for it
-    topics_incoming_list.append(("/tf", None, "tf2_msgs/msg/TFMessage", Compressions.NONE))
+    topics_incoming_list.append(("/tf", "tf2_msgs/msg/TFMessage", Compressions.NONE))
 
     topics_incoming: Dict[str, RelayTopicIncoming] = dict()
     topics_outgoing: Dict[str, RelayTopicOutgoing] = dict()
     services_incoming: Dict[str, RelayService] = dict()
 
-    # create workers for all topics and services
-    for topic_name, _, topic_type, compression in topics_incoming_list:
+    # create workers for all topics,  services and actions
+    for topic_name, topic_type, compression in topics_incoming_list:
         channel_type = get_channel_type(compression, topic_type)
         topics_incoming[topic_name] = RelayTopicIncoming(topic_name, topic_type, channel_type, node, compression)
 
-    for topic_name, _, topic_type, compression in topics_outgoing_list:
+    for topic_name, topic_type, compression in topics_outgoing_list:
         channel_type = get_channel_type(compression, topic_type)
         topics_outgoing[topic_name] = RelayTopicOutgoing(topic_name, topic_type, channel_type, node, compression)
 
-    for service_name, service_type in services_incoming_list:
+    for service_name, service_type, _ in services_incoming_list:
         services_incoming[service_name] = RelayService(service_name, service_type, node)
+
+    for action_name, action_type, _ in actions_to_provide:
+        provide_action(action_name, action_type, node, services_incoming, topics_outgoing)
 
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(node)

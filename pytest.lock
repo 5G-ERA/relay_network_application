@@ -9,6 +9,8 @@
 //     "CPython>=3.8"
 //   ],
 //   "generated_with_requirements": [
+//     "em",
+//     "lark",
 //     "pytest-timeout==2.2.0"
 //   ],
 //   "manylinux": "manylinux2014",
@@ -27,6 +29,19 @@
   "locked_resolves": [
     {
       "locked_requirements": [
+        {
+          "artifacts": [
+            {
+              "algorithm": "sha256",
+              "hash": "1c9f57b8f70c0a80b6730d81b56bc1a04789abec330f0641c8dd206629e14f69",
+              "url": "https://files.pythonhosted.org/packages/b9/b2/b64a81bec764c8590ee3cce8a9446cebdf1e3f24d5696d2915b2248921d3/em-0.4.0.tar.gz"
+            }
+          ],
+          "project_name": "em",
+          "requires_dists": [],
+          "requires_python": null,
+          "version": "0.4.0"
+        },
         {
           "artifacts": [
             {
@@ -64,6 +79,29 @@
           "requires_dists": [],
           "requires_python": ">=3.7",
           "version": "2.0.0"
+        },
+        {
+          "artifacts": [
+            {
+              "algorithm": "sha256",
+              "hash": "7d2c221a66a8165f3f81aacb958d26033d40d972fdb70213ab0a2e0627e29c86",
+              "url": "https://files.pythonhosted.org/packages/99/ca/f3532a61dce7dd52fbd38737a12e16cdc7699697e23287eb7addfdd93e3f/lark-1.1.8-py3-none-any.whl"
+            },
+            {
+              "algorithm": "sha256",
+              "hash": "7ef424db57f59c1ffd6f0d4c2b705119927f566b68c0fe1942dddcc0e44391a5",
+              "url": "https://files.pythonhosted.org/packages/12/1c/b466b58dacac15ffefce9bcb5128e18948a143849610a7d5300f31920be0/lark-1.1.8.tar.gz"
+            }
+          ],
+          "project_name": "lark",
+          "requires_dists": [
+            "atomicwrites; extra == \"atomic_cache\"",
+            "interegular<0.4.0,>=0.3.1; extra == \"interegular\"",
+            "js2py; extra == \"nearley\"",
+            "regex; extra == \"regex\""
+          ],
+          "requires_python": ">=3.6",
+          "version": "1.1.8"
         },
         {
           "artifacts": [
@@ -188,6 +226,8 @@
   "pip_version": "23.1.2",
   "prefer_older_binary": false,
   "requirements": [
+    "em",
+    "lark",
     "pytest-timeout==2.2.0"
   ],
   "requires_python": [
