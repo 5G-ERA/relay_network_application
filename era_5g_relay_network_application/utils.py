@@ -1,8 +1,8 @@
 import json
 import os
-import uuid
-from enum import Enum
-from typing import Dict, List, Optional, Tuple
+import threading
+from enum import Enum, IntEnum
+from typing import Dict, List, Tuple, Union
 
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from sensor_msgs.msg import Image  # pants: no-infer-dep
@@ -24,10 +24,39 @@ class Compressions(str, Enum):
         return super()._missing_(value)
 
 
+class ActionServiceVariant(IntEnum):
+    """Possible types of service servers related to ROS Actions."""
+
+    # Regular service that is not related to any ROS Action.
+    NONE = 0
+
+    # Send Goal service related to a particular Action.
+    ACTION_SEND_GOAL = 1
+
+    # Cancel Goal service related to a particular Action.
+    ACTION_CANCEL_GOAL = 2
+
+    # Get Request service related to a particular Action.
+    ACTION_GET_RESULT = 3
+
+
+class ActionTopicVariant(IntEnum):
+    """Possible types of topics related to ROS Actions."""
+
+    # Regular topic not related to any Action.
+    NONE = 0
+
+    # Feedback topic related to a particular Action.
+    ACTION_FEEDBACK = 1
+
+    # Status topic related to a particular Action.
+    ACTION_STATUS = 2
+
+
 IMAGE_CHANNEL_TYPES = (ChannelType.JPEG, ChannelType.H264)
 
 
-def load_transform_list(env_name: str = "TRANSFORM_LIST") -> List[Tuple[str, str, float, float, float]]:
+def load_transform_list(env_name: str = "TRANSFORMS_TO_SERVER") -> List[Tuple[str, str, float, float, float]]:
     tr_list = os.getenv(env_name)
     if tr_list is None:
         return []
@@ -44,59 +73,31 @@ def load_transform_list(env_name: str = "TRANSFORM_LIST") -> List[Tuple[str, str
             for tr in tr_data
         ]
     except KeyError:
-        raise ValueError("Wrong format of TRANSFORM_LIST, please see documentation.")
+        raise ValueError(f"Wrong format of {env_name}, please see documentation.")
 
 
-def load_topic_list(env_name: str = "TOPIC_LIST") -> List[Tuple[str, Optional[str], str, Compressions]]:
-    topic_list = os.getenv(env_name)
-    if topic_list is None:
+def load_entities_list(env_name: str = "TOPICS_TO_SERVER") -> List[Tuple[str, str, Compressions]]:
+    """Load list of ROS Topics, Services or Actions intended to be transferred using Relay Network Application.
+
+    Expected to be used with env variable, such as: TOPICS_TO_SERVER, SERVICES_TO_SERVER, ACTIONS_FROM_CLIENT etc.
+    """
+
+    entities_list = os.getenv(env_name)
+    if entities_list is None:
         return []
-    topic_data = json.loads(topic_list)
+    entities_data = json.loads(entities_list)
     try:
         return [
             (
-                topic["topic_name"],
-                topic.get("topic_name_remapped", None),
-                topic["topic_type"],
-                Compressions(topic.get("compression", None)),
+                entity["name"],
+                entity["type"],
+                Compressions(entity.get("compression", None)),  # Only used for Topics
             )
-            for topic in topic_data
+            for entity in entities_data
         ]
-    except KeyError:
-        print("Wrong format of the TOPIC_LIST variable.")
+    except (KeyError, ValueError, TypeError):
+        print(f"Wrong format of the {env_name} variable.")
         raise ValueError()
-
-
-def load_services_list(env_name: str = "SERVICE_LIST") -> List[Tuple[str, str]]:
-    service_list = os.getenv(env_name)
-    if service_list is None:
-        return []
-    service_data = json.loads(service_list)
-    try:
-        return [(service["service_name"], service["service_type"]) for service in service_data]
-    except KeyError:
-        print("Wrong format of the SERVICE_LIST variable. ")
-        raise ValueError()
-
-
-def build_service_request(service_name: str, service_type: str, req: str) -> Dict[str, str]:
-    return {
-        "type": "service_request",
-        "service_name": service_name,
-        "service_type": service_type,
-        "req": req,
-        "id": uuid.uuid4().hex,
-    }  # TODO this should be rather dataclass
-
-
-def build_service_response(service_name: str, service_type: str, res: str, id: str) -> Dict[str, str]:
-    return {
-        "type": "service_response",
-        "service_name": service_name,
-        "service_type": service_type,
-        "res": res,
-        "id": id,
-    }  # TODO this should be rather dataclass
 
 
 def get_channel_type(compression: Compressions, topic_type: str) -> ChannelType:
@@ -121,3 +122,31 @@ def get_channel_type(compression: Compressions, topic_type: str) -> ChannelType:
         else:
             channel_type = ChannelType.JSON
     return channel_type
+
+
+class ActionSubscribers:
+    """Structure to keep information about which client requested a particular action goal.
+
+    This is used to make sure that action feedback messages for a particular goal are sent to the correct client (which
+    requested the the action goal).
+    """
+
+    def __init__(self) -> None:
+        self.mutex = threading.Lock()
+        self.sid_for_goal_id: Dict[str, str] = {}
+
+    def set_sid_for_goal_id(self, goal_id: str, sid: str) -> None:
+        with self.mutex:
+            self.sid_for_goal_id[goal_id] = sid
+
+    def get_sid_for_goal_id(self, goal_id: str) -> Union[str, None]:
+        sid = self.sid_for_goal_id.get(goal_id)
+        return sid
+
+    def remove_sid_for_goal_id(self, goal_ids_to_remove: List[str]) -> None:
+        if not goal_ids_to_remove:
+            return
+        with self.mutex:
+            for goal_id in goal_ids_to_remove:
+                if goal_id in self.sid_for_goal_id:
+                    self.sid_for_goal_id.pop(goal_id)

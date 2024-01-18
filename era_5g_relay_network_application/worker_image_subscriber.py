@@ -11,9 +11,9 @@ from era_5g_relay_network_application import AnyQueue
 
 
 class WorkerImageSubscriber:
-    """Worker object that subscribe to image topic.
+    """Worker object that subscribes to image topic.
 
-    transform the image to numpy array and put it into queue for sending to the other part of the relay.
+    Transform the image to numpy array and put it into queue for sending to the other part of the relay.
     """
 
     def __init__(self, topic_name: str, topic_type: str, node: Node, queue: AnyQueue, **kw):

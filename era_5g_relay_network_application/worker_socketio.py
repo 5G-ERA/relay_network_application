@@ -8,19 +8,9 @@ from era_5g_relay_network_application import AnyQueue, SendFunctionProtocol
 
 
 class WorkerSocketIO(Thread):
-    """Worker object for data processing in standalone variant.
-
-    Reads data from passed queue, performs detection and returns results using the flask app.
-    """
+    """Worker object for sending data over socket io."""
 
     def __init__(self, queue: AnyQueue, send_function: Optional[SendFunctionProtocol] = None, **kw):
-        """Constructor.
-
-        Args:
-            data_queue (Queue): The queue with all to-be-processed data
-            app (_type_): The flask app for results publishing
-        """
-
         super().__init__(**kw)
         self.queue = queue
         self.stop_event = Event()

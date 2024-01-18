@@ -12,5 +12,7 @@ source /opt/ros/foxy/setup.sh
 # Export NetApp port of interface
 export NETAPP_PORT=5897
 
-# Set TOPIC_LIST environment variable (results, string)
-export TOPIC_LIST='[{"topic_name":"/res","topic_type":"std_msgs/String"}]'
+# Set environment variables (results, string)
+export TOPICS_FROM_CLIENT='[{"name":"/res","type":"std_msgs/String"}]'
+export SERVICES_FROM_CLIENT='[{"name":"/fcw_service_node/set_parameters_atomically","type":"rcl_interfaces/srv/SetParametersAtomically"}]'
+
