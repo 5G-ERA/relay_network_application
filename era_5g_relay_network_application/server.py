@@ -7,6 +7,7 @@ from queue import Full
 from typing import Any, Dict, Optional, Tuple, Union
 
 import rclpy  # pants: no-infer-dep
+from rclpy.qos import QoSProfile  # pants: no-infer-dep
 
 from era_5g_interface.channels import CallbackInfoServer, ChannelType
 from era_5g_interface.dataclasses.control_command import ControlCmdType, ControlCommand
@@ -17,6 +18,7 @@ from era_5g_relay_network_application.utils import (
     ActionSubscribers,
     ActionTopicVariant,
     Compressions,
+    EntityConfig,
     get_channel_type,
     load_entities_list,
     load_transform_list,
@@ -43,11 +45,17 @@ class RelayTopic:
     """Base class that holds information about topic and its type."""
 
     def __init__(
-        self, topic_name: str, topic_type: str, channel_type: ChannelType, compression: Compressions = Compressions.NONE
+        self,
+        topic_name: str,
+        topic_type: str,
+        channel_type: ChannelType,
+        compression: Optional[Compressions] = None,
+        qos: Optional[QoSProfile] = None,
     ):
         self.topic_name = topic_name
         self.topic_type = topic_type
         self.compression = compression
+        self.qos = qos
         self.channel_type = channel_type
         self.channel_name = f"topic/{self.topic_name}"
         self.queue: Queue[Any] = Queue(QUEUE_LENGTH_TOPICS)
@@ -63,9 +71,10 @@ class RelayTopicIncoming(RelayTopic):
         topic_type: str,
         channel_type: ChannelType,
         node,
-        compression: Compressions = Compressions.NONE,
+        compression: Optional[Compressions] = None,
+        qos: Optional[QoSProfile] = None,
     ):
-        super().__init__(topic_name, topic_type, channel_type, compression)
+        super().__init__(topic_name, topic_type, channel_type, compression, qos)
 
         # this sucks, the classes should have some common ancestor or there should be two properties
         self.worker: Union[WorkerImagePublisher, WorkerPublisher]
@@ -75,7 +84,9 @@ class RelayTopicIncoming(RelayTopic):
                 self.queue, self.topic_name, self.topic_type, compression=compression, node=node
             )
         else:
-            self.worker = WorkerPublisher(self.queue, self.topic_name, self.topic_type, self.compression, node)
+            self.worker = WorkerPublisher(
+                self.queue, self.topic_name, self.topic_type, node, self.compression, self.qos
+            )
         self.worker.daemon = True
         self.worker.start()
 
@@ -90,11 +101,12 @@ class RelayTopicOutgoing(RelayTopic):
         topic_type: str,
         channel_type: ChannelType,
         node: rclpy.node.Node,
-        compression: Compressions = Compressions.NONE,
+        compression: Optional[Compressions] = None,
+        qos: Optional[QoSProfile] = None,
         action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
         action_subscribers: Optional[ActionSubscribers] = None,
     ):
-        super().__init__(topic_name, topic_type, channel_type, compression)
+        super().__init__(topic_name, topic_type, channel_type, compression, qos)
 
         self.action_topic_variant = action_topic_variant
 
@@ -105,7 +117,7 @@ class RelayTopicOutgoing(RelayTopic):
             self.worker = WorkerImageSubscriber(topic_name, topic_type, node, self.queue)
         else:
             self.worker = WorkerSubscriber(
-                topic_name, topic_type, compression, node, self.queue, action_topic_variant, action_subscribers
+                topic_name, topic_type, node, self.queue, compression, qos, action_topic_variant, action_subscribers
             )
             # Topic name may be changed in case of action-related topics
             self.channel_name = f"topic/{self.worker.topic_name}"
@@ -121,6 +133,7 @@ class RelayService:
         service_name: str,
         service_type: str,
         node: rclpy.node.Node,
+        qos: Optional[QoSProfile] = None,
         action_service_variant: ActionServiceVariant = ActionServiceVariant.NONE,
         action_subscribers: Optional[ActionSubscribers] = None,
     ):
@@ -135,6 +148,7 @@ class RelayService:
             self.queue_request,
             self.queue_response,
             node,
+            qos,
             action_service_variant,
             action_subscribers,
         )
@@ -340,7 +354,7 @@ def provide_action(
         ActionServiceVariant.ACTION_GET_RESULT,
     ]
     for service_variant in services_to_provide:
-        relay_service = RelayService(action_name, action_type, node, service_variant, action_subscribers)
+        relay_service = RelayService(action_name, action_type, node, None, service_variant, action_subscribers)
         services_incoming[relay_service.worker.service_name] = relay_service
 
     # Create subscribers for the action topics (feedback and status)
@@ -351,7 +365,8 @@ def provide_action(
             action_type,
             ChannelType.JSON,
             node,
-            Compressions.NONE,
+            None,
+            None,
             topic_variant,
             action_subscribers,
         )
@@ -374,26 +389,30 @@ def main(args=None) -> None:
     node.get_logger().debug(f"Loaded transforms for listening: {transforms_to_listen}")
 
     # can't know if client will want to send some TFs so we have to create worker for it
-    topics_incoming_list.append(("/tf", "tf2_msgs/msg/TFMessage", Compressions.NONE))
+    topics_incoming_list.append(EntityConfig("/tf", "tf2_msgs/msg/TFMessage"))
 
     topics_incoming: Dict[str, RelayTopicIncoming] = dict()
     topics_outgoing: Dict[str, RelayTopicOutgoing] = dict()
     services_incoming: Dict[str, RelayService] = dict()
 
     # create workers for all topics,  services and actions
-    for topic_name, topic_type, compression in topics_incoming_list:
-        channel_type = get_channel_type(compression, topic_type)
-        topics_incoming[topic_name] = RelayTopicIncoming(topic_name, topic_type, channel_type, node, compression)
+    for topic_in in topics_incoming_list:
+        channel_type = get_channel_type(topic_in.compression, topic_in.type)
+        topics_incoming[topic_in.name] = RelayTopicIncoming(
+            topic_in.name, topic_in.type, channel_type, node, topic_in.compression, topic_in.qos
+        )
 
-    for topic_name, topic_type, compression in topics_outgoing_list:
-        channel_type = get_channel_type(compression, topic_type)
-        topics_outgoing[topic_name] = RelayTopicOutgoing(topic_name, topic_type, channel_type, node, compression)
+    for topic_out in topics_outgoing_list:
+        channel_type = get_channel_type(topic_out.compression, topic_out.type)
+        topics_outgoing[topic_out.name] = RelayTopicOutgoing(
+            topic_out.name, topic_out.type, channel_type, node, topic_out.compression, topic_out.qos
+        )
 
-    for service_name, service_type, _ in services_incoming_list:
-        services_incoming[service_name] = RelayService(service_name, service_type, node)
+    for srv in services_incoming_list:
+        services_incoming[srv.name] = RelayService(srv.name, srv.type, node, srv.qos)
 
-    for action_name, action_type, _ in actions_to_provide:
-        provide_action(action_name, action_type, node, services_incoming, topics_outgoing)
+    for action in actions_to_provide:
+        provide_action(action.name, action.type, node, services_incoming, topics_outgoing)
 
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(node)

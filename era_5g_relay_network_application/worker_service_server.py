@@ -1,10 +1,11 @@
 import logging
 from queue import Full
 from threading import Event
-from typing import Any
+from typing import Any, Optional
 
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.qos import QoSPresetProfiles, QoSProfile  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import extract_values, populate_instance  # pants: no-infer-dep
 
@@ -27,6 +28,7 @@ class WorkerServiceServer:
         request_queue: AnyQueue,
         response_queue: AnyQueue,
         node: Node,
+        qos: Optional[QoSProfile] = None,
         action_service_variant: ActionServiceVariant = ActionServiceVariant.NONE,
         **kw,
     ):
@@ -78,6 +80,7 @@ class WorkerServiceServer:
             self.service_name,
             self.callback_service,
             callback_group=MutuallyExclusiveCallbackGroup(),  # each service server has its own callback group to avoid blocking each other
+            qos_profile=qos if qos is not None else QoSPresetProfiles.SERVICES_DEFAULT.value,
         )
 
     def callback_service(self, request: Any, response: Any) -> Any:

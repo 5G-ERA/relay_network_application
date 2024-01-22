@@ -1,8 +1,9 @@
 from queue import Full
-from typing import Any
+from typing import Any, Optional
 
 from cv_bridge import CvBridge  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.qos import QoSProfile  # pants: no-infer-dep
 from rclpy.time import Time  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from sensor_msgs.msg import Image  # pants: no-infer-dep
@@ -16,7 +17,9 @@ class WorkerImageSubscriber:
     Transform the image to numpy array and put it into queue for sending to the other part of the relay.
     """
 
-    def __init__(self, topic_name: str, topic_type: str, node: Node, queue: AnyQueue, **kw):
+    def __init__(
+        self, topic_name: str, topic_type: str, node: Node, queue: AnyQueue, qos: Optional[QoSProfile] = None, **kw
+    ):
         """Constructor.
 
         Args:
@@ -31,7 +34,7 @@ class WorkerImageSubscriber:
         inst = ros_loader.get_message_instance(topic_type)
         self.node = node
         self.node.get_logger().debug(f"Create Subscription: {type(inst)} {topic_name}")
-        self.sub = node.create_subscription(type(inst), topic_name, self.callback, 10)
+        self.sub = node.create_subscription(type(inst), topic_name, self.callback, qos if qos is not None else 10)
         self.inst = inst
         self.queue = queue
         self.topic_name = topic_name

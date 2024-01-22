@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 import DracoPy
 from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.qos import QoSProfile  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import extract_values  # pants: no-infer-dep
 from sensor_msgs.msg import PointCloud2  # pants: no-infer-dep
@@ -34,9 +35,10 @@ class WorkerSubscriber:
         self,
         topic_name: str,
         topic_type: str,
-        compression: Compressions,
         node: Node,
         queue: AnyQueue,
+        compression: Optional[Compressions] = None,
+        qos: Optional[QoSProfile] = None,
         action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
         action_subscribers: Optional[ActionSubscribers] = None,
         **kw,
@@ -82,7 +84,9 @@ class WorkerSubscriber:
             self.topic_type_class = action_type_class.Impl.GoalStatusMessage
 
         self.node.get_logger().debug(f"Create Subscription: {self.topic_type_class} {self.topic_name}")
-        self.sub = node.create_subscription(self.topic_type_class, self.topic_name, self.callback, 10)
+        self.sub = node.create_subscription(
+            self.topic_type_class, self.topic_name, self.callback, qos if qos is not None else 10
+        )
 
     def callback(self, data: Any):
         msg = extract_values(data)

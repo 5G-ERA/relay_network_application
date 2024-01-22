@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 import DracoPy
 from rclpy.node import Node  # pants: no-infer-dep
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import FieldTypeMismatchException  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import populate_instance  # pants: no-infer-dep; pants: no-infer-dep
@@ -29,8 +29,9 @@ class WorkerPublisher(Thread):
         queue: AnyQueue,
         topic_name: str,
         topic_type: str,
-        compression: Compressions,
         node: Node,
+        compression: Optional[Compressions],
+        qos: Optional[QoSProfile] = None,
         action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
         **kw,
     ) -> None:
@@ -40,7 +41,6 @@ class WorkerPublisher(Thread):
         self.compression = compression
 
         self.stop_event = Event()
-        qos_profile = 10  # history depth (in case of the most simple profile)
 
         if action_topic_variant == ActionTopicVariant.NONE:
             self.topic_type_class = ros_loader.get_message_class(topic_type)
@@ -57,12 +57,14 @@ class WorkerPublisher(Thread):
             self.topic_name = f"{action_name}/_action/status"
             self.topic_type_class = action_type_class.Impl.GoalStatusMessage
 
+            assert qos is None, "QoS should not be set for action status"
+
             # Status topic must have different qos profile
             # This is necessary for action to be recognized as being available by wait_for_server() call
-            qos_profile = QoSProfile(durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL, depth=10)
+            qos = QoSProfile(durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL, depth=10)
 
         # Create publisher
-        self.pub = node.create_publisher(self.topic_type_class, self.topic_name, qos_profile)
+        self.pub = node.create_publisher(self.topic_type_class, self.topic_name, qos if qos is not None else 10)
 
     def put_data(self, data: Any) -> None:
         self.queue.put_nowait(data)

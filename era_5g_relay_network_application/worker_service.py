@@ -6,6 +6,7 @@ from threading import Event, Thread
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.qos import QoSPresetProfiles, QoSProfile  # pants: no-infer-dep
 from rclpy.task import Future  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import extract_values, populate_instance  # pants: no-infer-dep
@@ -34,6 +35,7 @@ class WorkerService(Thread):
         requests_queue: SrvQueue,
         responses_queue: SrvQueue,
         node: Node,
+        qos: Optional[QoSProfile] = None,
         action_service_variant: ActionServiceVariant = ActionServiceVariant.NONE,
         action_subscribers: Optional[ActionSubscribers] = None,
         **kw,
@@ -85,7 +87,11 @@ class WorkerService(Thread):
             self.service_type_class = action_type_class.Impl.GetResultService
             self.service_name = f"{action_name}/_action/get_result"
 
-        self.client = self.node.create_client(self.service_type_class, self.service_name)
+        self.client = self.node.create_client(
+            self.service_type_class,
+            self.service_name,
+            qos_profile=qos if qos is not None else QoSPresetProfiles.SERVICES_DEFAULT.value,
+        )
 
         while not self.client.wait_for_service(timeout_sec=1.0):
             self.node.get_logger().info(f"Service {self.service_name} is not available, waiting again...")
