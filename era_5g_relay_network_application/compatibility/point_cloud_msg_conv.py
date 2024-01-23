@@ -8,8 +8,8 @@
 from typing import Any, Iterable, List, Optional
 
 from numpy.lib.recfunctions import structured_to_unstructured
-from sensor_msgs.msg import PointCloud2
-from sensor_msgs_py.point_cloud2 import read_points
+from sensor_msgs.msg import PointCloud2  # pants: no-infer-dep
+from sensor_msgs_py.point_cloud2 import read_points  # pants: no-infer-dep
 
 
 def read_points_numpy(

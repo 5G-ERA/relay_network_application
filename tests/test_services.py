@@ -3,9 +3,9 @@ import os
 from multiprocessing import Process
 from typing import Generator
 
-import pytest  # type: ignore  # pants: no-infer-dep
+import pytest  # pants: no-infer-dep
 import rclpy  # pants: no-infer-dep
-from example_interfaces.srv import AddTwoInts  # type: ignore  # pants: no-infer-dep
+from example_interfaces.srv import AddTwoInts  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
 
 SERVICE_TIMEOUT = 12
@@ -14,9 +14,21 @@ SERVICE_NAME = "/add_two_ints"
 SERVICE_TYPE = "example_interfaces/AddTwoInts"
 
 
-@pytest.fixture(scope="class")
-def _set_service_list() -> Generator[None, None, None]:
-    service_list = json.dumps([{"name": SERVICE_NAME, "type": SERVICE_TYPE}])
+@pytest.fixture(
+    scope="class",
+    params=[
+        None,
+        {"qos": {"preset": "system_default"}},
+        {"qos": {"depth": 10}},
+    ],
+)
+def _set_service_list(request) -> Generator[None, None, None]:
+    env = {"name": SERVICE_NAME, "type": SERVICE_TYPE}
+
+    if request.param:
+        env.update(request.param)
+
+    service_list = json.dumps([env])
     os.environ["SERVICES_TO_SERVER"] = service_list
     os.environ["SERVICES_FROM_CLIENT"] = service_list
     yield
@@ -57,7 +69,7 @@ class MinimalServiceClient(Node):
         print("Minimal Service Client: call returned from server")
 
         result = future.result()
-        return (req.a, req.b, result.sum)
+        return req.a, req.b, result.sum
 
 
 def service_server() -> None:

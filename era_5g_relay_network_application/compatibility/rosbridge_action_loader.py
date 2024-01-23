@@ -9,7 +9,9 @@
 from threading import Lock
 from typing import Any, Dict
 
-from rosbridge_library.internal.ros_loader import InvalidClassException, InvalidModuleException, _get_class
+from rosbridge_library.internal.ros_loader import InvalidClassException  # pants: no-infer-dep
+from rosbridge_library.internal.ros_loader import InvalidModuleException  # pants: no-infer-dep
+from rosbridge_library.internal.ros_loader import _get_class  # pants: no-infer-dep
 
 _loaded_actions: Dict[str, Any] = {}
 _actions_lock = Lock()

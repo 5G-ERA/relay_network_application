@@ -22,7 +22,7 @@ from era_5g_relay_network_application.utils import (
     IMAGE_CHANNEL_TYPES,
     ActionServiceVariant,
     ActionTopicVariant,
-    Compressions,
+    EntityConfig,
     get_channel_type,
     load_entities_list,
     load_transform_list,
@@ -140,6 +140,7 @@ def create_service_server(
     service_type: str,
     callbacks_info: Dict[str, CallbackInfoClient],
     node: Node,
+    qos: Optional[QoSProfile] = None,
     action_service_variant: ActionServiceVariant = ActionServiceVariant.NONE,
 ):
     """Create a service server to listen to local service calls."""
@@ -149,7 +150,7 @@ def create_service_server(
     request_q: Queue = Queue(QUEUE_LENGTH_SERVICES)
     response_q: Queue = Queue(QUEUE_LENGTH_SERVICES)
     service_worker = WorkerServiceServer(
-        service_name, service_type, request_q, response_q, node, action_service_variant
+        service_name, service_type, request_q, response_q, node, qos, action_service_variant
     )
     services_workers[service_worker.service_name] = service_worker
 
@@ -176,7 +177,7 @@ def set_up_ros_action(
         """Create action-related topic (i.e. Feedback and Status topics)."""
 
         queue: Queue = Queue(QUEUE_LENGTH_TOPICS)
-        worker = WorkerPublisher(queue, action_name, action_type, Compressions.NONE, node, action_topic_variant)
+        worker = WorkerPublisher(queue, action_name, action_type, node, None, None, action_topic_variant)
 
         callback = partial(json_callback, queue=queue)
 
@@ -188,9 +189,9 @@ def set_up_ros_action(
         worker.start()
 
     # Create services realted to the action
-    create_service_server(action_name, action_type, callbacks_info, node, ActionServiceVariant.ACTION_SEND_GOAL)
-    create_service_server(action_name, action_type, callbacks_info, node, ActionServiceVariant.ACTION_CANCEL_GOAL)
-    create_service_server(action_name, action_type, callbacks_info, node, ActionServiceVariant.ACTION_GET_RESULT)
+    create_service_server(action_name, action_type, callbacks_info, node, None, ActionServiceVariant.ACTION_SEND_GOAL)
+    create_service_server(action_name, action_type, callbacks_info, node, None, ActionServiceVariant.ACTION_CANCEL_GOAL)
+    create_service_server(action_name, action_type, callbacks_info, node, None, ActionServiceVariant.ACTION_GET_RESULT)
 
     # Create publishers for feedback a status topics
     # This is necessary for action to be recognized as being available by wait_for_server() call
@@ -210,7 +211,7 @@ def main(args=None) -> None:
     topics_incoming_list = load_entities_list("TOPICS_FROM_SERVER")  # The list of topics to receive from the server
 
     # can't know if client will want to send some TFs so we have to create worker for it
-    topics_incoming_list.append(("/tf", "tf2_msgs/msg/TFMessage", Compressions.NONE))
+    topics_incoming_list.append(EntityConfig("/tf", "tf2_msgs/msg/TFMessage"))
     services = load_entities_list("SERVICES_TO_SERVER")  # The list of services to call on the relay server
 
     # The list of transforms to listen to and send to the relay server
@@ -240,36 +241,36 @@ def main(args=None) -> None:
 
     callbacks_info = dict()
     # Create publishers and collect callbacks info for all topics to be received from the relay server
-    for topic_name, topic_type, compression in topics_incoming_list:
+    for topic_in in topics_incoming_list:
         queue: Queue = Queue(QUEUE_LENGTH_TOPICS)
-        channel_type = get_channel_type(compression, topic_type)
+        channel_type = get_channel_type(topic_in.compression, topic_in.type)
         worker: WorkerPublisher
         if channel_type in IMAGE_CHANNEL_TYPES:
             callback = partial(
                 image_callback,
                 queue=queue,
             )
-            worker = WorkerImagePublisher(queue, topic_name, topic_type, compression, node)
+            worker = WorkerImagePublisher(queue, topic_in.name, topic_in.type, node, topic_in.compression, topic_in.qos)
         else:
             callback = partial(
                 json_callback,
                 queue=queue,
             )
-            worker = WorkerPublisher(queue, topic_name, topic_type, compression, node)
+            worker = WorkerPublisher(queue, topic_in.name, topic_in.type, node, topic_in.compression, topic_in.qos)
 
-        callbacks_info[f"topic/{topic_name}"] = CallbackInfoClient(channel_type, callback)
+        callbacks_info[f"topic/{topic_in.name}"] = CallbackInfoClient(channel_type, callback)
 
-        topics_workers[topic_name] = worker
+        topics_workers[topic_in.name] = worker
         worker.daemon = True
         worker.start()
 
     # Prepare service servers for all services to be called on the relay server
-    for service_name, service_type, _ in services:
-        create_service_server(service_name, service_type, callbacks_info, node)
+    for service in services:
+        create_service_server(service.name, service.type, callbacks_info, node, service.qos)
 
     # Set up action-related services and topics
-    for action_name, action_type, _ in actions:
-        set_up_ros_action(action_name, action_type, callbacks_info, topics_workers, node)
+    for action in actions:
+        set_up_ros_action(action.name, action.type, callbacks_info, topics_workers, node)
 
     try:
         if USE_MIDDLEWARE:
@@ -286,27 +287,27 @@ def main(args=None) -> None:
             client.register(f"{NETAPP_ADDRESS}", {"subscribe_results": True}, WAIT_UNTIL_AVAILABLE, WAIT_TIMEOUT)
 
         # create socketio workers for all topics and services to be sent to the relay server
-        for topic_name, topic_type, compression in topics_outgoing_list:
-            topic_type_class = ros_loader.get_message_instance(topic_type)
+        for topic_out in topics_outgoing_list:
+            topic_type_class = ros_loader.get_message_instance(topic_out.type)
 
             logger.info(f"Topic class is {topic_type_class}")
 
             q: Queue = Queue(QUEUE_LENGTH_TOPICS)
-            channel_type = get_channel_type(compression, topic_type)
+            channel_type = get_channel_type(topic_out.compression, topic_out.type)
 
             if channel_type in IMAGE_CHANNEL_TYPES:
-                WorkerImageSubscriber(topic_name, topic_type, node, q)
+                WorkerImageSubscriber(topic_out.name, topic_out.type, node, q, topic_out.qos)
                 send_function: SendFunctionProtocol = partial(
                     send_image,
-                    event=f"topic/{topic_name}",
+                    event=f"topic/{topic_out.name}",
                     client=client,
                     channel_type=channel_type,
                     can_be_dropped=True,
                 )
             else:
-                WorkerSubscriber(topic_name, topic_type, compression, node, q)
+                WorkerSubscriber(topic_out.name, topic_out.type, node, q, topic_out.compression, topic_out.qos)
                 send_function: SendFunctionProtocol = partial(  # type: ignore  # deals with "name already defined"
-                    client.send_data, event=f"topic/{topic_name}", channel_type=channel_type, can_be_dropped=True
+                    client.send_data, event=f"topic/{topic_out.name}", channel_type=channel_type, can_be_dropped=True
                 )
 
             worker_socketio = WorkerSocketIO(q, send_function)

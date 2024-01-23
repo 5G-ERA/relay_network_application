@@ -4,10 +4,10 @@ import time
 from multiprocessing import Process
 from typing import Any
 
-import pytest  # type: ignore  # pants: no-infer-dep
+import pytest  # pants: no-infer-dep
 import rclpy  # pants: no-infer-dep
-from action_msgs.msg import GoalStatus  # type: ignore  # pants: no-infer-dep
-from example_interfaces.action import Fibonacci  # type: ignore  # pants: no-infer-dep
+from action_msgs.msg import GoalStatus  # pants: no-infer-dep
+from example_interfaces.action import Fibonacci  # pants: no-infer-dep
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse  # pants: no-infer-dep
 from rclpy.callback_groups import ReentrantCallbackGroup  # pants: no-infer-dep
 from rclpy.executors import MultiThreadedExecutor  # pants: no-infer-dep

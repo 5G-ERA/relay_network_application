@@ -1,9 +1,11 @@
 import json
 import os
 import threading
+from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
+from rclpy.qos import QoSPresetProfiles, QoSProfile  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from sensor_msgs.msg import Image  # pants: no-infer-dep
 
@@ -11,17 +13,10 @@ from era_5g_interface.channels import ChannelType
 
 
 class Compressions(str, Enum):
-    NONE = "none"
     LZ4 = "lz4"
     DRACO = "draco"
     JPEG = "jpeg"
     H264 = "h264"
-
-    @classmethod
-    def _missing_(cls, value):
-        if value is None:
-            return cls("none")
-        return super()._missing_(value)
 
 
 class ActionServiceVariant(IntEnum):
@@ -76,7 +71,15 @@ def load_transform_list(env_name: str = "TRANSFORMS_TO_SERVER") -> List[Tuple[st
         raise ValueError(f"Wrong format of {env_name}, please see documentation.")
 
 
-def load_entities_list(env_name: str = "TOPICS_TO_SERVER") -> List[Tuple[str, str, Compressions]]:
+@dataclass
+class EntityConfig:
+    name: str
+    type: str
+    compression: Optional[Compressions] = None
+    qos: Optional[QoSProfile] = None
+
+
+def load_entities_list(env_name: str = "TOPICS_TO_SERVER") -> List[EntityConfig]:
     """Load list of ROS Topics, Services or Actions intended to be transferred using Relay Network Application.
 
     Expected to be used with env variable, such as: TOPICS_TO_SERVER, SERVICES_TO_SERVER, ACTIONS_FROM_CLIENT etc.
@@ -86,21 +89,40 @@ def load_entities_list(env_name: str = "TOPICS_TO_SERVER") -> List[Tuple[str, st
     if entities_list is None:
         return []
     entities_data = json.loads(entities_list)
-    try:
-        return [
-            (
-                entity["name"],
-                entity["type"],
-                Compressions(entity.get("compression", None)),  # Only used for Topics
-            )
-            for entity in entities_data
-        ]
-    except (KeyError, ValueError, TypeError):
-        print(f"Wrong format of the {env_name} variable.")
-        raise ValueError()
+
+    if not isinstance(entities_data, list):
+        raise ValueError(f"ENV VAR '{env_name}' should contain a list!")
+
+    ret: List[EntityConfig] = []
+
+    for entity in entities_data:
+        try:
+            e_name = entity["name"]
+            e_type = entity["type"]
+            comp = entity.get("compression", None)
+            e_compr: Optional[Compressions] = None
+            if comp:
+                e_compr = Compressions(comp)  # Only used for Topics
+        except (KeyError, ValueError, TypeError) as e:
+            raise ValueError(f"Wrong format of the {env_name} variable.") from e
+
+        ec = EntityConfig(e_name, e_type, e_compr)
+
+        if "qos" in entity:
+            if not isinstance(entity["qos"], dict):
+                raise ValueError(f"Invalid 'qos' field for entity {e_name}.")
+
+            try:
+                ec.qos = QoSPresetProfiles.get_from_short_key(entity["qos"]["preset"])
+            except KeyError:
+                ec.qos = QoSProfile(**entity["qos"])
+
+        ret.append(ec)
+
+    return ret
 
 
-def get_channel_type(compression: Compressions, topic_type: str) -> ChannelType:
+def get_channel_type(compression: Optional[Compressions], topic_type: str) -> ChannelType:
     """Returns the channel type based on the compression and topic type.
 
     Args:
@@ -128,7 +150,7 @@ class ActionSubscribers:
     """Structure to keep information about which client requested a particular action goal.
 
     This is used to make sure that action feedback messages for a particular goal are sent to the correct client (which
-    requested the the action goal).
+    requested the action goal).
     """
 
     def __init__(self) -> None:

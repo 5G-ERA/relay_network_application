@@ -19,7 +19,7 @@ The Relay Network Application consists of three parts: Relay Client, Relay Serve
 
 The Relay Client runs on robot and initiates the connection to the Relay Server. For configuration,
 there are the following environment variables, `TOPICS_TO_SERVER`, `TOPICS_FROM_SERVER`, `SERVICES_TO_SERVER`, `ACTIONS_TO_SERVER` and `TRANSFORMS_TO_SERVER`. `TOPICS_TO_SERVER` is used to specify the topics that should be mirrored to the remote ROS environment. Similarly, `TOPICS_FROM_SERVER` defines the topics to be received by the client from the server (and has the same format).
-`SERVICES_TO_SERVER` and `ACTIONS_TO_SERVER` specify the list of remote services and actions that should be provided to the robot. 
+`SERVICES_TO_SERVER` and `ACTIONS_TO_SERVER` specify the list of remote services and actions that should be provided to the robot. If needed, a default QoS for any topic or service can be overridden by setting `qos` where one can , see the example below. 
 `TRANSFORMS_TO_SERVER` specifies which TF transforms should be listened to. The variables are specified in JSON format:
 
 ```json
@@ -30,7 +30,13 @@ TOPICS_TO_SERVER = [
   },
   {
     "name": "/test_str",
-    "type": "std_msgs/String"
+    "type": "std_msgs/String",
+    "qos": {"preset":  "sensor_data"}
+  },
+  {
+    "name": "/test_str2",
+    "type": "std_msgs/String",
+    "qos": {"depth":  10}
   }
 ]
 ```

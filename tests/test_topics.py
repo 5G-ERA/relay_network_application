@@ -5,7 +5,7 @@ import subprocess as sp
 import time
 from typing import Generator
 
-import pytest  # type: ignore  # pants: no-infer-dep
+import pytest  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 
@@ -27,9 +27,21 @@ class MinimalSubscriber(Node):
         self.message_received = True
 
 
-@pytest.fixture(scope="class")
-def _set_topic_list_client_to_server():
-    topic_list = json.dumps([{"name": TOPIC_NAME, "type": TOPIC_TYPE}])
+@pytest.fixture(
+    scope="class",
+    params=[
+        None,
+        {"qos": {"preset": "system_default"}},
+        {"qos": {"depth": 10}},
+    ],
+)
+def _set_topic_list_client_to_server(request):
+    env = {"name": TOPIC_NAME, "type": TOPIC_TYPE}
+
+    if request.param:
+        env.update(request.param)
+
+    topic_list = json.dumps([env])
     os.environ["TOPICS_TO_SERVER"] = topic_list
     os.environ["TOPICS_FROM_CLIENT"] = topic_list
     yield
@@ -37,9 +49,22 @@ def _set_topic_list_client_to_server():
     del os.environ["TOPICS_FROM_CLIENT"]
 
 
-@pytest.fixture(scope="class")
-def _set_topic_list_server_to_client():
-    topic_list = json.dumps([{"name": TOPIC_NAME, "type": TOPIC_TYPE}])
+@pytest.fixture(
+    scope="class",
+    params=[
+        None,
+        {"qos": {"preset": "system_default"}},
+        {"qos": {"depth": 10}},
+    ],
+)
+def _set_topic_list_server_to_client(request):
+    env = {"name": TOPIC_NAME, "type": TOPIC_TYPE}
+
+    if request.param:
+        env.update(request.param)
+
+    topic_list = json.dumps([env])
+
     os.environ["TOPICS_TO_CLIENT"] = topic_list
     os.environ["TOPICS_FROM_SERVER"] = topic_list
     yield
