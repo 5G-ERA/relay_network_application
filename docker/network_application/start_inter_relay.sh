@@ -1,5 +1,4 @@
 #!/bin/bash
 
-cd /root/era_5g_relay_network_application/era_5g_relay_network_application
 source /opt/ros/humble/setup.bash
-exec python3 interface_inter.py
+exec python3 -m era_5g_relay_network_application.server_inter
