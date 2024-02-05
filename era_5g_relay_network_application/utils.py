@@ -17,6 +17,7 @@ class Compressions(str, Enum):
     DRACO = "draco"
     JPEG = "jpeg"
     H264 = "h264"
+    HEVC = "hevc"
 
 
 class ActionServiceVariant(IntEnum):
@@ -48,7 +49,7 @@ class ActionTopicVariant(IntEnum):
     ACTION_STATUS = 2
 
 
-IMAGE_CHANNEL_TYPES = (ChannelType.JPEG, ChannelType.H264)
+IMAGE_CHANNEL_TYPES = (ChannelType.JPEG, ChannelType.H264, ChannelType.HEVC)
 
 
 def load_transform_list(env_name: str = "TRANSFORMS_TO_SERVER") -> List[Tuple[str, str, float, float, float]]:
@@ -136,6 +137,8 @@ def get_channel_type(compression: Optional[Compressions], topic_type: str) -> Ch
     if isinstance(topic_type_inst, Image):
         if compression == Compressions.H264:
             channel_type = ChannelType.H264
+        elif compression == Compressions.HEVC:
+            channel_type = ChannelType.HEVC
         else:
             channel_type = ChannelType.JPEG
     else:

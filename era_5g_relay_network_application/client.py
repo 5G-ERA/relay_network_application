@@ -129,7 +129,7 @@ def send_image(data: Tuple, event: str, client: NetAppClientBase, channel_type: 
         data (Tuple): The image data in the format (timestamp, image_data)
         event (str): The name of the event to send the data to
         client (NetAppClientBase): The client to send the data with
-        channel_type (ChannelType): The type of the channel to send the data to (JPEG or H264)
+        channel_type (ChannelType): The type of the channel to send the data to (JPEG or H264 or HEVC)
         can_be_dropped (bool, optional): Indicates if the frame can be dropped due to the back-pressure. Defaults to False.
     """
     client.send_image(data[1], event, channel_type, data[0], can_be_dropped=can_be_dropped)
