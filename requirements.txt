@@ -1,6 +1,6 @@
-era_5g_interface~=0.8.0
-era_5g_client~=0.9.0
-era_5g_server~=0.2.0
+era_5g_interface~=0.9.0
+era_5g_client~=0.10.1
+era_5g_server~=0.3.0
 flask_socketio==5.3.*
 flask~=3.0.0
 flask_session==0.5.*
