@@ -27,7 +27,7 @@ python_distribution(
     sdist=True,
     provides=setup_py(
         name="era_5g_relay_network_application",
-        version="1.0.0",
+        version="1.1.0",
         description="Relay Network Application",
         author="Michal Kapinus",
         author_email="ikapinus@fit.vutbr.cz",
