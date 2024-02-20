@@ -2,6 +2,7 @@ from queue import Full
 from typing import Any, Optional
 
 from cv_bridge import CvBridge  # pants: no-infer-dep
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
 from rclpy.qos import QoSProfile  # pants: no-infer-dep
 from rclpy.time import Time  # pants: no-infer-dep
@@ -34,7 +35,19 @@ class WorkerImageSubscriber:
         inst = ros_loader.get_message_instance(topic_type)
         self.node = node
         self.node.get_logger().debug(f"Create Subscription: {type(inst)} {topic_name}")
-        self.sub = node.create_subscription(type(inst), topic_name, self.callback, qos if qos is not None else 10)
+
+        # each topic has its own group
+        # callbacks for different topics can overlap
+        # there will be only one running callback for particular topic
+        self._cb_group = MutuallyExclusiveCallbackGroup()
+
+        self.sub = node.create_subscription(
+            type(inst),
+            topic_name,
+            self.callback,
+            qos if qos is not None else 10,
+            callback_group=self._cb_group,
+        )
         self.inst = inst
         self.queue = queue
         self.topic_name = topic_name

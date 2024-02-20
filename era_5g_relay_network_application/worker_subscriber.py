@@ -2,6 +2,7 @@ from queue import Full
 from typing import Any, Optional
 
 import DracoPy
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
 from rclpy.qos import QoSProfile  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
@@ -14,7 +15,7 @@ except ImportError:
     # Compatibility with ROS2 Foxy
     from era_5g_relay_network_application.compatibility.point_cloud_msg_conv import (
         read_points_numpy,
-    )  # pants: no-infer-dep
+    )
 
 from era_5g_relay_network_application import AnyQueue
 from era_5g_relay_network_application.utils import ActionSubscribers, ActionTopicVariant, Compressions
@@ -68,6 +69,11 @@ class WorkerSubscriber:
         self.action_topic_variant = action_topic_variant
         self.action_subscribers = action_subscribers
 
+        # each topic has its own group
+        # callbacks for different topics can overlap
+        # there will be only one running callback for particular topic
+        self._cb_group = MutuallyExclusiveCallbackGroup()
+
         if action_topic_variant == ActionTopicVariant.NONE:
             self.topic_type_class = ros_loader.get_message_class(topic_type)
         else:
@@ -85,7 +91,11 @@ class WorkerSubscriber:
 
         self.node.get_logger().debug(f"Create Subscription: {self.topic_type_class} {self.topic_name}")
         self.sub = node.create_subscription(
-            self.topic_type_class, self.topic_name, self.callback, qos if qos is not None else 10
+            self.topic_type_class,
+            self.topic_name,
+            self.callback,
+            qos if qos is not None else 10,
+            callback_group=self._cb_group,
         )
 
     def callback(self, data: Any):
