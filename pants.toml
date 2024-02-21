@@ -22,7 +22,7 @@ repo_id = "a888d69447jkire892c9fe2cd1ea2aceeredfdfg"
 root_patterns = ["/"]
 
 [python]
-interpreter_constraints = [">=3.8"]
+interpreter_constraints = [">=3.10"]
 resolves = { python-default = "python-default.lock", flake8 = "flake8.lock", mypy = "mypy.lock", pytest = "pytest.lock"}
 enable_resolves = true
 
@@ -42,4 +42,4 @@ install_from_resolve = "pytest"
 args = ["--wrap-summaries=120", "--wrap-descriptions=120"]
 
 [test]
-extra_env_vars = ["LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/opt/ros/foxy/lib/x86_64-linux-gnu:/opt/ros/foxy/lib", "HOME=/tmp"]
+extra_env_vars = ["LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib", "HOME=/tmp"]
