@@ -17,10 +17,14 @@ The Relay Network Application consists of three parts: Relay Client, Relay Serve
 
 ### Relay Client
 
-The Relay Client runs on robot and initiates the connection to the Relay Server. For configuration,
-there are the following environment variables, `TOPICS_TO_SERVER`, `TOPICS_FROM_SERVER`, `SERVICES_TO_SERVER`, `ACTIONS_TO_SERVER` and `TRANSFORMS_TO_SERVER`. `TOPICS_TO_SERVER` is used to specify the topics that should be mirrored to the remote ROS environment. Similarly, `TOPICS_FROM_SERVER` defines the topics to be received by the client from the server (and has the same format).
-`SERVICES_TO_SERVER` and `ACTIONS_TO_SERVER` specify the list of remote services and actions that should be provided to the robot. If needed, a default QoS for any topic or service can be overridden by setting `qos` where one can , see the example below. 
-`TRANSFORMS_TO_SERVER` specifies which TF transforms should be listened to. The variables are specified in JSON format:
+The Relay Client runs on robot and initiates the connection to the Relay Server. For configuration, there are 
+the following environment variables, `TOPICS_TO_SERVER`, `TOPICS_FROM_SERVER`, `SERVICES_TO_SERVER`, 
+`ACTIONS_TO_SERVER` and `TRANSFORMS_TO_SERVER`. `TOPICS_TO_SERVER` is used to specify the topics that should be 
+mirrored to the remote ROS environment. Similarly, `TOPICS_FROM_SERVER` defines the topics to be received by 
+the client from the server (and has the same format). `SERVICES_TO_SERVER` and `ACTIONS_TO_SERVER` specify the list 
+of remote services and actions that should be provided to the robot. If needed, a default QoS for any topic or 
+service can be overridden by setting `qos` where one can , see the example below. `TRANSFORMS_TO_SERVER` specifies 
+which TF transforms should be listened to. The variables are specified in JSON format:
 
 ```json
 TOPICS_TO_SERVER = [
@@ -71,7 +75,7 @@ ACTIONS_TO_SERVER = [
 ```
 
 The `name` field specifies the name of the action that the robot expects to be provided by the Relay Server.
-The `type` field contains the textual representation of the actions's type.
+The `type` field contains the textual representation of the action's type.
 
 
 ```json
@@ -86,7 +90,9 @@ TRANSFORMS_TO_SERVER = [
 ]
 ```
 
-Thresholds are not mandatory and are set to the example values by default. Only changes exceeding the thresholds are transmitted. The `max_publish_period` value can be used to force periodical publishing - even when there are no changes. This behavior can be disabled by setting it to zero (which is the default value).
+Thresholds are not mandatory and are set to the example values by default. Only changes exceeding the thresholds are 
+transmitted. The `max_publish_period` value can be used to force periodical publishing - even when there are no changes.
+This behavior can be disabled by setting it to zero (which is the default value).
 
 
 To set the connection to the Relay Server or Relay Inter, following env variable are used:
@@ -105,10 +111,10 @@ All env variables with MIDDLEWARE prefix are ignored if USE_MIDDLEWARE is set to
 
 ### Relay Server
 
-The Relay Server is supposed to be deployed on remote edge/cloud device. It recieves protocol messages
+The Relay Server is supposed to be deployed on remote edge/cloud device. It receives protocol messages
 from one or more Relay Clients and publishes them to the remote ROS environment. 
 
-The list of topics that should be obtained from the robot and published on the remote device is pecified
+The list of topics that should be obtained from the robot and published on the remote device is specified
 using the `TOPICS_FROM_CLIENT` env variable:
 
 ```json
@@ -126,7 +132,8 @@ TOPICS_FROM_CLIENT = [
 
 The variable description is the same as `TOPICS_TO_SERVER` in the Relay Client.
 
-Additionally, to configure the topics that should be mirrored from edge/cloud to the robot, `TOPICS_TO_CLIENT` env variable needs to be used:
+Additionally, to configure the topics that should be mirrored from edge/cloud to the robot, `TOPICS_TO_CLIENT` env 
+variable needs to be used:
 
 ```json
 TOPICS_TO_CLIENT = [
@@ -142,7 +149,8 @@ TOPICS_TO_CLIENT = [
 ```
 
 
-Services to provide are defined in `SERVICES_FROM_CLIENT` variable, whose structure is the same as client's `SERVICES_TO_SERVER`.
+Services to provide are defined in `SERVICES_FROM_CLIENT` variable, whose structure is the same as client's `
+SERVICES_TO_SERVER`.
 
 ```json
 SERVICES_FROM_CLIENT = [
@@ -167,7 +175,8 @@ ACTIONS_FROM_CLIENT = [
 This variable is the server's counterpart for client's `ACTIONS_TO_SERVER` and has the same format.
 
 
-Moreover, `TRANSFORMS_FROM_CLIENT` variable is used to define transformations that are to be received from the client (see `TRANSFORMS_TO_SERVER` for the client side).
+Moreover, `TRANSFORMS_FROM_CLIENT` variable is used to define transformations that are to be received from 
+the client (see `TRANSFORMS_TO_SERVER` for the client side).
 
 
 ![The simple Relay Server scenario](docs/images/relay_server.png)
@@ -179,7 +188,7 @@ environments (Relay1, Relay2).
 
 The Relay Inter serves as a router, which can route the data from one robot, to multiple edge/cloud
 environments. The main intention is to minimize multiple sending of the same data from robot to cloud,
-which could be expensive when low-bandwith connection is used. The configuration is provided with
+which could be expensive when low-bandwidth connection is used. The configuration is provided with
 RELAYS_LIST env variable:
 
 ```json
@@ -230,5 +239,23 @@ TBA
 ## Examples
 
 TBA
+
+## Contributing, development
+
+- The package is developed and tested with Python 3.8.
+- Any contribution should go through a pull request from your fork.
+- We use Pants to manage the code ([how to install it](https://www.pantsbuild.org/docs/installation)).
+- Before committing, please run locally:
+  - `pants fmt ::` - format all code according to our standard.
+  - `pants lint ::` - checks formatting and few more things.
+  - `pants check ::` - runs type checking (mypy).
+  - `pants test ::` - runs Pytest tests (load ROS 2 environment before, e.g. source /opt/ros/humble/setup.sh).
+- The same checks will be run within CI.
+- A virtual environment with all necessary dependencies can be generated using `pants export ::`. 
+  You may then activate the environment and add `era_5g_relay_network_application` to your `PYTHONPATH`, which is equivalent 
+  to installing a package using `pip install -e`.
+- To generate distribution packages (`tar.gz` and `whl`), you may run `pants package ::`.
+- For commit messages, please stick to
+  [https://www.conventionalcommits.org/en/v1.0.0/](https://www.conventionalcommits.org/en/v1.0.0/).
 
  

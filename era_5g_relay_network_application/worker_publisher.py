@@ -1,7 +1,8 @@
 import logging
+import time
 from queue import Empty
 from threading import Event, Thread
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 import DracoPy
 from rclpy.node import Node  # pants: no-infer-dep
@@ -12,6 +13,7 @@ from rosbridge_library.internal.message_conversion import populate_instance  # p
 from sensor_msgs.msg import LaserScan, PointCloud2  # pants: no-infer-dep
 from sensor_msgs_py.point_cloud2 import create_cloud_xyz32  # pants: no-infer-dep
 
+from era_5g_interface.measuring import Measuring
 from era_5g_relay_network_application import AnyQueue
 from era_5g_relay_network_application.utils import ActionTopicVariant, Compressions
 
@@ -33,8 +35,15 @@ class WorkerPublisher(Thread):
         compression: Optional[Compressions],
         qos: Optional[QoSProfile] = None,
         action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
+        extended_measuring: bool = True,
         **kw,
     ) -> None:
+        """
+
+        Args:
+            extended_measuring (bool): Enable logging of measuring.
+        """
+
         super().__init__(**kw)
         self.queue = queue
         self.topic_name = topic_name
@@ -66,24 +75,40 @@ class WorkerPublisher(Thread):
         # Create publisher
         self.pub = node.create_publisher(self.topic_type_class, self.topic_name, qos if qos is not None else 10)
 
+        self._extended_measuring = extended_measuring
+        self._measuring = Measuring(
+            measuring_items={
+                "key_timestamp": 0,
+                "before_get_data_timestamp": 0,
+                "after_get_data_timestamp": 0,
+                "before_publish_timestamp": 0,
+                "after_publish_timestamp": 0,
+            },
+            enabled=self._extended_measuring,
+            filename_prefix="publisher-" + self.topic_name.replace("/", ""),
+        )
+
     def put_data(self, data: Any) -> None:
         self.queue.put_nowait(data)
 
     def stop(self) -> None:
         self.stop_event.set()
 
-    def get_data(self) -> Optional[Any]:
+    def get_data(self) -> Optional[Tuple[Any, int]]:
         try:
-            d = self.queue.get(block=True, timeout=1)
+            data, timestamp = self.queue.get(block=True, timeout=1)
 
             # Create new instance for each message
             inst = self.topic_type_class()
 
             if isinstance(inst, PointCloud2) and self.compression == Compressions.DRACO:
-                return create_cloud_xyz32(populate_instance(d, inst).header, DracoPy.decode(d["data"]).points)
+                return (
+                    create_cloud_xyz32(populate_instance(data, inst).header, DracoPy.decode(data["data"]).points),
+                    timestamp,
+                )
             if isinstance(inst, LaserScan):
-                d["ranges"][:] = [x if x is not None else float("inf") for x in d["ranges"]]
-            return populate_instance(d, inst)
+                data["ranges"][:] = [x if x is not None else float("inf") for x in data["ranges"]]
+            return populate_instance(data, inst), timestamp
         except Empty:
             return None
         except (FieldTypeMismatchException, TypeError) as ex:
@@ -96,9 +121,19 @@ class WorkerPublisher(Thread):
         logging.debug(f"{self.name} thread is running.")
 
         while not self.stop_event.is_set():
-            data = self.get_data()
+            before_get_data_timestamp = time.perf_counter_ns()
+            data_timestamp = self.get_data()
+            after_get_data_timestamp = time.perf_counter_ns()
 
-            if data is None:
+            if data_timestamp is None:
                 continue
+            data, timestamp = data_timestamp
 
+            before_publish_timestamp = time.perf_counter_ns()
             self.pub.publish(data)
+            after_publish_timestamp = time.perf_counter_ns()
+            self._measuring.log_measuring(timestamp, "before_get_data_timestamp", before_get_data_timestamp)
+            self._measuring.log_measuring(timestamp, "after_get_data_timestamp", after_get_data_timestamp)
+            self._measuring.log_measuring(timestamp, "before_publish_timestamp", before_publish_timestamp)
+            self._measuring.log_measuring(timestamp, "after_publish_timestamp", after_publish_timestamp)
+            self._measuring.store_measuring(timestamp)

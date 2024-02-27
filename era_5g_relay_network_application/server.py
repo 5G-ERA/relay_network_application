@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import rclpy  # pants: no-infer-dep
 from rclpy.qos import QoSProfile  # pants: no-infer-dep
 
-from era_5g_interface.channels import CallbackInfoServer, ChannelType
+from era_5g_interface.channels import CallbackInfoServer, Channels, ChannelType
 from era_5g_interface.dataclasses.control_command import ControlCmdType, ControlCommand
 from era_5g_interface.utils.locked_set import LockedSet
 from era_5g_relay_network_application.utils import (
@@ -39,6 +39,8 @@ NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 QUEUE_LENGTH_TOPICS = int(os.getenv("QUEUE_LENGTH_TOPICS", 1))
 QUEUE_LENGTH_SERVICES = int(os.getenv("QUEUE_LENGTH_SERVICES", 1))
 QUEUE_LENGTH_TF = int(os.getenv("QUEUE_LENGTH_TF", 1))
+
+EXTENDED_MEASURING = bool(os.getenv("EXTENDED_MEASURING", False))
 
 
 class RelayTopic:
@@ -92,7 +94,7 @@ class RelayTopicIncoming(RelayTopic):
 
 
 class RelayTopicOutgoing(RelayTopic):
-    """Class that holds information about outgoing topic (i.e. topic that is subscribed to be send to the relay client),
+    """Class that holds information about outgoing topic (i.e. topic that is subscribed to be sent to the relay client),
     its type and related subscriber."""
 
     def __init__(
@@ -167,7 +169,7 @@ class RelayServer(NetworkApplicationServer):
         self,
         port: int,
         topics_incoming: Dict[str, RelayTopicIncoming],  # topics that are received from the relay client
-        topics_outgoing: Dict[str, RelayTopicOutgoing],  # topics that are subscribed to be send to the relay client
+        topics_outgoing: Dict[str, RelayTopicOutgoing],  # topics that are subscribed to be sent to the relay client
         services_incoming: Dict[str, RelayService],
         *args,
         tf_queue: Optional[Queue] = None,
@@ -199,8 +201,9 @@ class RelayServer(NetworkApplicationServer):
             )
             self.callbacks_info[service.channel_name_request] = CallbackInfoServer(ChannelType.JSON, callback)
 
-            # services are bidirectional so we need to create worker for response
-            # unlike the outgoing topics, service response is only send to the client who called it, so we need a different send method
+            # services are bidirectional, so we need to create worker for response
+            # unlike the outgoing topics, service response is only send to the client who called it, so we need a
+            # different send method
             send_function = partial(self.send_data_with_sid, event=service.channel_name_response)
             worker = WorkerSocketIO(service.queue_response, send_function)
             self.workers_outgoing[service.channel_name_response] = worker
@@ -209,7 +212,7 @@ class RelayServer(NetworkApplicationServer):
         super().__init__(port, self.callbacks_info, *args, command_callback=self.command_callback, host=host, **kwargs)
         self.result_subscribers = LockedSet()  # contains data namespace SIDs of clients that want to receive results
 
-        # collects info about topics that are subscribed to be send to the relay client
+        # collects info about topics that are subscribed to be sent to the relay client
         for topic_out in topics_outgoing.values():
             if topic_out.channel_type in [ChannelType.JSON, ChannelType.JSON_LZ4]:
                 send_function = partial(
@@ -248,24 +251,28 @@ class RelayServer(NetworkApplicationServer):
         This is intended mainly for sending service response and action feedback.
 
         Args:
-            data (Tuple[str, Dict]): Tuple of namespace SID and message data (e.g. service response)
-            event (str): Name of the event (channel) to send the data to
+            data (Tuple[str, Dict]): Tuple of namespace SID and message data (e.g. service response).
+            event (str): Name of the event (channel) to send the data to.
         """
+
         self.send_data(data=data[1], event=event, sid=data[0])
 
     def send_image_data(self, data: Tuple, event: str, channel_type: ChannelType, sid: str, can_be_dropped=False):
         """Unpacks image data and timestamp and sends it to the relay client.
 
         Args:
-            data (Tuple): Tuple of image data and timestamp
-            event (str): _description_
-            channel_type (ChannelType): _description_
+            data (Tuple): Tuple of image data and timestamp.
+            event (str): Name of the event (channel) to send the data to.
+            channel_type (ChannelType): The type of the channel to send the data to (JPEG or H264 or HEVC).
+            sid (str): Data namespace SID of the client that sent the data.
             can_be_dropped (bool, optional): _description_. Defaults to False.
         """
+
         self.send_image(data[1], event, channel_type, data[0], sid=sid, can_be_dropped=can_be_dropped)
 
     def run(self):
         """Runs the SocketIO server and starts all workers."""
+
         for worker in self.workers_outgoing.values():
             worker.daemon = True
             worker.start()
@@ -275,9 +282,9 @@ class RelayServer(NetworkApplicationServer):
         """Allows to receive image data using the websocket transport.
 
         Args:
-            sid (str): Data namespace SID of the client that sent the data
-            data (Dict[str, Any]): The image data in format {"frame": <image_data>, "timestamp": <timestamp>}
-            queue (Queue): The queue to pass the data to the publisher worker
+            sid (str): Data namespace SID of the client that sent the data.
+            data (Dict[str, Any]): The image data in format {"frame": <image_data>, "timestamp": <timestamp>}.
+            queue (Queue): The queue to pass the data to the publisher worker.
         """
 
         try:
@@ -289,13 +296,14 @@ class RelayServer(NetworkApplicationServer):
         """Allows to receive json data using the websocket transport.
 
         Args:
-            sid (str): Data namespace SID of the client that sent the data
-            data (Dict): The json data
-            queue (Queue): The queue to pass the data to the publisher worker
+            sid (str): Data namespace SID of the client that sent the data.
+            data (Dict): The json data.
+            queue (Queue): The queue to pass the data to the publisher worker.
         """
+
         print(f"json_callback: {sid}, {data}")
         try:
-            queue.put_nowait(data)
+            queue.put_nowait((data, Channels.get_timestamp_from_data(data)))
         except Full:
             pass
 
@@ -303,10 +311,11 @@ class RelayServer(NetworkApplicationServer):
         """Allows to receive service request using the websocket transport.
 
         Args:
-            sid (str): Data namespace SID of the client that sent the data
-            data (Dict): The service request
-            queue (Queue): The queue to pass the data to the service worker
+            sid (str): Data namespace SID of the client that sent the data.
+            data (Dict): The service request.
+            queue (Queue): The queue to pass the data to the service worker.
         """
+
         try:
             queue.put_nowait((sid, data))
         except Full:
@@ -316,12 +325,13 @@ class RelayServer(NetworkApplicationServer):
         """Processes the received control command.
 
         Args:
-            command (ControlCommand): The control command
-            sid (str): Control namespace SID of the client that sent the command
+            command (ControlCommand): The control command.
+            sid (str): Control namespace SID of the client that sent the command.
 
         Returns:
-            Tuple[bool, str]: Confirmation that the command was processed
+            Tuple[bool, str]: Confirmation that the command was processed.
         """
+
         if command and command.cmd_type == ControlCmdType.INIT:
             args = command.data
             if args:
@@ -388,7 +398,7 @@ def main(args=None) -> None:
     node.get_logger().debug(f"Loaded incoming topics: {topics_incoming_list}")
     node.get_logger().debug(f"Loaded transforms for listening: {transforms_to_listen}")
 
-    # can't know if client will want to send some TFs so we have to create worker for it
+    # can't know if client will want to send some TFs, so we have to create worker for it
     topics_incoming_list.append(EntityConfig("/tf", "tf2_msgs/msg/TFMessage"))
 
     topics_incoming: Dict[str, RelayTopicIncoming] = dict()
@@ -427,7 +437,17 @@ def main(args=None) -> None:
         WorkerTF(transforms_to_listen, tf_queue, node)
 
     # create relay server
-    socketio_process = RelayServer(NETAPP_PORT, topics_incoming, topics_outgoing, services_incoming, tf_queue=tf_queue)
+    socketio_process = RelayServer(
+        NETAPP_PORT,
+        topics_incoming,
+        topics_outgoing,
+        services_incoming,
+        tf_queue=tf_queue,
+        extended_measuring=EXTENDED_MEASURING,
+    )
+
+    # TODO: An exception in callbacks of executor nodes does not terminate the application!
+    #  This should be fixed!
 
     socketio_process.start()
     socketio_process.join()
