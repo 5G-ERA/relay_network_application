@@ -10,6 +10,7 @@ from cv_bridge import CvBridge  # pants: no-infer-dep
 from rclpy.executors import MultiThreadedExecutor  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy  # pants: no-infer-dep
+from rclpy.parameter import Parameter  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 
 from era_5g_client.client import NetAppClient
@@ -59,6 +60,9 @@ MIDDLEWARE_PASSWORD = os.getenv("MIDDLEWARE_PASSWORD", "password")
 MIDDLEWARE_TASK_ID = os.getenv("MIDDLEWARE_TASK_ID", "00000000-0000-0000-0000-000000000000")
 # middleware robot id (robot id)
 MIDDLEWARE_ROBOT_ID = os.getenv("MIDDLEWARE_ROBOT_ID", "00000000-0000-0000-0000-000000000000")
+
+
+USE_SIM_TIME = os.getenv("USE_SIM_TIME", "false").lower() in ("true", "1", "t")
 
 QUEUE_LENGTH_TOPICS = int(os.getenv("QUEUE_LENGTH_TOPICS", 1))
 QUEUE_LENGTH_SERVICES = int(os.getenv("QUEUE_LENGTH_SERVICES", 1))
@@ -208,6 +212,8 @@ def main(args=None) -> None:
     rclpy.init(args=args)
     global node
     node = rclpy.create_node("relay_client")
+    use_sim_time = Parameter("use_sim_time", Parameter.Type.BOOL, USE_SIM_TIME)
+    node.set_parameters([use_sim_time])
     node.get_logger().set_level(logging.DEBUG)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
@@ -296,7 +302,6 @@ def main(args=None) -> None:
         for topic_out in topics_outgoing_list:
             topic_type_class = ros_loader.get_message_instance(topic_out.type)
 
-            logger.info(f"Topic class is {topic_type_class}")
 
             subscriber_queue: Queue = Queue(QUEUE_LENGTH_TOPICS)
             channel_type = get_channel_type(topic_out.compression, topic_out.type)

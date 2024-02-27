@@ -397,6 +397,8 @@ def main(args=None) -> None:
 
     rclpy.init(args=args)
     node = rclpy.create_node("relay_netapp")
+    use_sim_time = Parameter("use_sim_time", Parameter.Type.BOOL, USE_SIM_TIME)
+    node.set_parameters([use_sim_time])
     node.get_logger().set_level(logging.DEBUG)
     node.get_logger().debug(f"Loaded outgoing topics: {topics_outgoing_list}")
     node.get_logger().debug(f"Loaded incoming topics: {topics_incoming_list}")
