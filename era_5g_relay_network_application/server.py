@@ -34,7 +34,7 @@ from era_5g_relay_network_application.worker_socketio_server import WorkerSocket
 from era_5g_relay_network_application.worker_subscriber import WorkerSubscriber
 from era_5g_relay_network_application.worker_tf import WorkerTF
 from era_5g_server.server import NetworkApplicationServer
-
+from rclpy.parameter import Parameter
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("relay server python")
 
