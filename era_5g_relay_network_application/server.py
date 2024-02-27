@@ -44,7 +44,7 @@ NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 QUEUE_LENGTH_TOPICS = int(os.getenv("QUEUE_LENGTH_TOPICS", 1))
 QUEUE_LENGTH_SERVICES = int(os.getenv("QUEUE_LENGTH_SERVICES", 1))
 QUEUE_LENGTH_TF = int(os.getenv("QUEUE_LENGTH_TF", 1))
-
+USE_SIM_TIME = os.getenv("USE_SIM_TIME", "false").lower() in ("true", "1", "t")
 EXTENDED_MEASURING = bool(os.getenv("EXTENDED_MEASURING", False))
 
 
