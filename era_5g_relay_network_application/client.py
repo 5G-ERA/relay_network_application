@@ -226,7 +226,6 @@ def main(args=None) -> None:
 
     node.get_logger().debug(f"Loaded outgoing topics: {topics_outgoing_list}")
     node.get_logger().debug(f"Loaded incoming topics: {topics_incoming_list}")
-
     node.get_logger().debug(f"Loaded outgoing services: {services}")
 
     global client

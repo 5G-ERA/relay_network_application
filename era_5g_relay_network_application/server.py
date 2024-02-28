@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import threading
 from functools import partial
 from multiprocessing import Queue
@@ -32,6 +33,9 @@ from era_5g_relay_network_application.worker_socketio_server import WorkerSocket
 from era_5g_relay_network_application.worker_subscriber import WorkerSubscriber
 from era_5g_relay_network_application.worker_tf import WorkerTF
 from era_5g_server.server import NetworkApplicationServer
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger("relay server python")
 
 # port of the netapp's server
 NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
