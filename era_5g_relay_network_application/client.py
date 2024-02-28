@@ -16,7 +16,7 @@ from era_5g_client.client import NetAppClient
 from era_5g_client.client_base import NetAppClientBase
 from era_5g_client.dataclasses import MiddlewareInfo
 from era_5g_client.exceptions import FailedToConnect
-from era_5g_interface.channels import CallbackInfoClient, ChannelType
+from era_5g_interface.channels import CallbackInfoClient, Channels, ChannelType
 from era_5g_relay_network_application import SendFunctionProtocol
 from era_5g_relay_network_application.utils import (
     IMAGE_CHANNEL_TYPES,
@@ -64,13 +64,14 @@ QUEUE_LENGTH_TOPICS = int(os.getenv("QUEUE_LENGTH_TOPICS", 1))
 QUEUE_LENGTH_SERVICES = int(os.getenv("QUEUE_LENGTH_SERVICES", 1))
 QUEUE_LENGTH_TF = int(os.getenv("QUEUE_LENGTH_TF", 1))
 
+EXTENDED_MEASURING = bool(os.getenv("EXTENDED_MEASURING", False))
+
 bridge = CvBridge()
 client: Optional[NetAppClientBase] = None
 
 topics_workers: Dict[str, WorkerPublisher] = dict()
 services_workers: Dict[str, WorkerServiceServer] = dict()
 socketio_workers: List[WorkerSocketIO] = list()
-
 
 node: Optional[Node] = None
 
@@ -85,12 +86,12 @@ def json_callback(data: Dict, queue: Queue):
     """Executed when new JSON data is received from the relay server.
 
     Args:
-        data (Dict[str, Any]): JSON data received from the relay server
-        queue (Queue):  The queue to pass the data to the publisher
+        data (Dict[str, Any]): JSON data received from the relay server.
+        queue (Queue):  The queue to pass the data to the publisher.
     """
 
     try:
-        queue.put_nowait(data)
+        queue.put_nowait((data, Channels.get_timestamp_from_data(data)))
     except Full:
         return
 
@@ -99,8 +100,9 @@ def image_callback(data: Dict[str, Any], queue: Queue):
     """Executed when new image data is received from the relay server.
 
     Args:
-        data (Dict[str, Any]): The image data received from the relay server in the format {"frame": <image_data>, "timestamp": <timestamp>}
-        queue (Queue): The queue to pass the data to the publisher
+        data (Dict[str, Any]): The image data received from the relay server in the format {"frame": <image_data>,
+            "timestamp": <timestamp>}.
+        queue (Queue): The queue to pass the data to the publisher.
     """
 
     try:
@@ -113,9 +115,10 @@ def service_callback(data: Dict[str, Any], response_queue: Queue):
     """Executed when new service response is received from the relay server.
 
     Args:
-        data (Dict[str, Any]): Service response received from the relay server
-        response_queue (Queue): The queue to pass the data to the service server
+        data (Dict[str, Any]): Service response received from the relay server.
+        response_queue (Queue): The queue to pass the data to the service server.
     """
+
     try:
         response_queue.put_nowait(data)
     except Full:
@@ -126,12 +129,14 @@ def send_image(data: Tuple, event: str, client: NetAppClientBase, channel_type: 
     """Sends image data to the relay server.
 
     Args:
-        data (Tuple): The image data in the format (timestamp, image_data)
-        event (str): The name of the event to send the data to
-        client (NetAppClientBase): The client to send the data with
-        channel_type (ChannelType): The type of the channel to send the data to (JPEG or H264 or HEVC)
-        can_be_dropped (bool, optional): Indicates if the frame can be dropped due to the back-pressure. Defaults to False.
+        data (Tuple): The image data in the format (timestamp, image_data).
+        event (str): The name of the event to send the data to.
+        client (NetAppClientBase): The client to send the data with.
+        channel_type (ChannelType): The type of the channel to send the data to (JPEG or H264 or HEVC).
+        can_be_dropped (bool, optional): Indicates if the frame can be dropped due to the back-pressure. Defaults to
+            False.
     """
+
     client.send_image(data[1], event, channel_type, data[0], can_be_dropped=can_be_dropped)
 
 
@@ -188,7 +193,7 @@ def set_up_ros_action(
         worker.daemon = True
         worker.start()
 
-    # Create services realted to the action
+    # Create services related to the action
     create_service_server(action_name, action_type, callbacks_info, node, None, ActionServiceVariant.ACTION_SEND_GOAL)
     create_service_server(action_name, action_type, callbacks_info, node, None, ActionServiceVariant.ACTION_CANCEL_GOAL)
     create_service_server(action_name, action_type, callbacks_info, node, None, ActionServiceVariant.ACTION_GET_RESULT)
@@ -210,7 +215,7 @@ def main(args=None) -> None:
     topics_outgoing_list = load_entities_list("TOPICS_TO_SERVER")  # The list of topics to send to the relay server
     topics_incoming_list = load_entities_list("TOPICS_FROM_SERVER")  # The list of topics to receive from the server
 
-    # can't know if client will want to send some TFs so we have to create worker for it
+    # can't know if client will want to send some TFs, so we have to create worker for it
     topics_incoming_list.append(EntityConfig("/tf", "tf2_msgs/msg/TFMessage"))
     services = load_entities_list("SERVICES_TO_SERVER")  # The list of services to call on the relay server
 
@@ -274,7 +279,9 @@ def main(args=None) -> None:
 
     try:
         if USE_MIDDLEWARE:
-            client = NetAppClient(callbacks_info, logging_level=logging.DEBUG, socketio_debug=False)
+            client = NetAppClient(
+                callbacks_info, logging_level=logging.DEBUG, socketio_debug=False, extended_measuring=EXTENDED_MEASURING
+            )
             client.connect_to_middleware(MiddlewareInfo(MIDDLEWARE_ADDRESS, MIDDLEWARE_USER, MIDDLEWARE_PASSWORD))
             client.run_task(
                 MIDDLEWARE_TASK_ID,
@@ -283,7 +290,7 @@ def main(args=None) -> None:
                 args={"subscribe_results": True},
             )
         else:
-            client = NetAppClientBase(callbacks_info)
+            client = NetAppClientBase(callbacks_info, extended_measuring=EXTENDED_MEASURING)
             client.register(f"{NETAPP_ADDRESS}", {"subscribe_results": True}, WAIT_UNTIL_AVAILABLE, WAIT_TIMEOUT)
 
         # create socketio workers for all topics and services to be sent to the relay server
@@ -292,11 +299,11 @@ def main(args=None) -> None:
 
             logger.info(f"Topic class is {topic_type_class}")
 
-            q: Queue = Queue(QUEUE_LENGTH_TOPICS)
+            subscriber_queue: Queue = Queue(QUEUE_LENGTH_TOPICS)
             channel_type = get_channel_type(topic_out.compression, topic_out.type)
 
             if channel_type in IMAGE_CHANNEL_TYPES:
-                WorkerImageSubscriber(topic_out.name, topic_out.type, node, q, topic_out.qos)
+                WorkerImageSubscriber(topic_out.name, topic_out.type, node, subscriber_queue, topic_out.qos)
                 send_function: SendFunctionProtocol = partial(
                     send_image,
                     event=f"topic/{topic_out.name}",
@@ -305,12 +312,14 @@ def main(args=None) -> None:
                     can_be_dropped=True,
                 )
             else:
-                WorkerSubscriber(topic_out.name, topic_out.type, node, q, topic_out.compression, topic_out.qos)
+                WorkerSubscriber(
+                    topic_out.name, topic_out.type, node, subscriber_queue, topic_out.compression, topic_out.qos
+                )
                 send_function: SendFunctionProtocol = partial(  # type: ignore  # deals with "name already defined"
                     client.send_data, event=f"topic/{topic_out.name}", channel_type=channel_type, can_be_dropped=True
                 )
 
-            worker_socketio = WorkerSocketIO(q, send_function)
+            worker_socketio = WorkerSocketIO(subscriber_queue, send_function)
             worker_socketio.daemon = True
             worker_socketio.start()
 
@@ -333,7 +342,8 @@ def main(args=None) -> None:
             worker_socketio.daemon = True
             worker_socketio.start()
             socketio_workers.append(worker_socketio)
-
+        # TODO: An exception outside nodes in executor does not terminate the application!
+        #  This should be fixed!
         executor.spin()
     except FailedToConnect as ex:
         logger.error(f"Failed to connect: {ex}")

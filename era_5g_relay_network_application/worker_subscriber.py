@@ -1,3 +1,4 @@
+import time
 from queue import Full
 from typing import Any, Optional
 
@@ -8,6 +9,9 @@ from rclpy.qos import QoSProfile  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from rosbridge_library.internal.message_conversion import extract_values  # pants: no-infer-dep
 from sensor_msgs.msg import PointCloud2  # pants: no-infer-dep
+
+from era_5g_interface.channels import Channels
+from era_5g_interface.measuring import Measuring
 
 try:
     from sensor_msgs_py.point_cloud2 import read_points_numpy  # pants: no-infer-dep
@@ -42,6 +46,7 @@ class WorkerSubscriber:
         qos: Optional[QoSProfile] = None,
         action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
         action_subscribers: Optional[ActionSubscribers] = None,
+        extended_measuring: bool = True,
         **kw,
     ):
         """Constructor.
@@ -57,6 +62,7 @@ class WorkerSubscriber:
             action_subscribers (ActionSubscribers, Optional): Used only for action-related topics.
                 The action_subscribers structure holds information about which client requested which goal.
                 Default is None (for regular topics).
+            extended_measuring (bool): Enable logging of measuring.
         """
 
         super().__init__(**kw)
@@ -98,8 +104,22 @@ class WorkerSubscriber:
             callback_group=self._cb_group,
         )
 
+        self._extended_measuring = extended_measuring
+        self._measuring = Measuring(
+            measuring_items={
+                "key_timestamp": 0,
+                "before_callback_timestamp": 0,
+                "after_callback_timestamp": 0,
+            },
+            enabled=self._extended_measuring,
+            filename_prefix="subscription-" + self.topic_name.replace("/", ""),
+        )
+
     def callback(self, data: Any):
+        before_callback_timestamp = time.perf_counter_ns()
+
         msg = extract_values(data)
+        timestamp = Channels.get_timestamp_from_data(msg)
 
         if isinstance(data, PointCloud2) and self.compression == Compressions.DRACO:
             np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc....
@@ -119,3 +139,6 @@ class WorkerSubscriber:
 
         except Full:
             pass
+        self._measuring.log_measuring(timestamp, "before_callback_timestamp", before_callback_timestamp)
+        self._measuring.log_timestamp(timestamp, "after_callback_timestamp")
+        self._measuring.store_measuring(timestamp)
