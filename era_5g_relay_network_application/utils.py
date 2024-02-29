@@ -6,6 +6,7 @@ from enum import Enum, IntEnum
 from typing import Dict, List, Optional, Tuple, Union
 
 from rclpy.qos import QoSPresetProfiles, QoSProfile  # pants: no-infer-dep
+from ros2bag.api import interpret_dict_as_qos_profile  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 from sensor_msgs.msg import Image  # pants: no-infer-dep
 
@@ -116,7 +117,7 @@ def load_entities_list(env_name: str = "TOPICS_TO_SERVER") -> List[EntityConfig]
             try:
                 ec.qos = QoSPresetProfiles.get_from_short_key(entity["qos"]["preset"])
             except KeyError:
-                ec.qos = QoSProfile(**entity["qos"])
+                ec.qos = interpret_dict_as_qos_profile(entity["qos"])
 
         ret.append(ec)
 

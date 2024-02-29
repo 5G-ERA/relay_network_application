@@ -9,6 +9,7 @@ import rclpy  # pants: no-infer-dep
 from cv_bridge import CvBridge  # pants: no-infer-dep
 from rclpy.executors import MultiThreadedExecutor  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.parameter import Parameter  # pants: no-infer-dep
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy  # pants: no-infer-dep
 from rclpy.parameter import Parameter  # pants: no-infer-dep
 from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
@@ -76,6 +77,7 @@ client: Optional[NetAppClientBase] = None
 topics_workers: Dict[str, WorkerPublisher] = dict()
 services_workers: Dict[str, WorkerServiceServer] = dict()
 socketio_workers: List[WorkerSocketIO] = list()
+
 
 node: Optional[Node] = None
 
@@ -300,9 +302,6 @@ def main(args=None) -> None:
 
         # create socketio workers for all topics and services to be sent to the relay server
         for topic_out in topics_outgoing_list:
-            topic_type_class = ros_loader.get_message_instance(topic_out.type)
-
-
             subscriber_queue: Queue = Queue(QUEUE_LENGTH_TOPICS)
             channel_type = get_channel_type(topic_out.compression, topic_out.type)
 
