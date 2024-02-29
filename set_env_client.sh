@@ -16,8 +16,8 @@ export NETAPP_ADDRESS=http://127.0.0.1:5897
 #export NETAPP_ADDRESS=http://192.168.206.50:5897
 
 # Set environment variables (input, images)
-export TOPICS_TO_SERVER='[{"name":"/image_raw","type":"sensor_msgs/Image"}]'
-export TOPICS_FROM_SERVER='[{"name":"/res","type":"std_msgs/String"}]'
+export TOPICS_TO_SERVER='[{"name":"/image_raw", "type":"sensor_msgs/Image", "compression": "hevc"}]'
+export TOPICS_FROM_SERVER='[{"name":"/res", "type":"std_msgs/String"}]'
 #export SERVICES_TO_SERVER='[{"name":"/fcw_service_node/set_parameters_atomically",
 # "type":"rcl_interfaces/srv/SetParametersAtomically"}]'
 export EXTENDED_MEASURING=True
