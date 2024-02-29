@@ -34,7 +34,6 @@ from era_5g_relay_network_application.worker_socketio_server import WorkerSocket
 from era_5g_relay_network_application.worker_subscriber import WorkerSubscriber
 from era_5g_relay_network_application.worker_tf import WorkerTF
 from era_5g_server.server import NetworkApplicationServer
-from rclpy.parameter import Parameter
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("relay server python")
 
@@ -305,8 +304,6 @@ class RelayServer(NetworkApplicationServer):
             data (Dict): The json data.
             queue (Queue): The queue to pass the data to the publisher worker.
         """
-
-        print(f"json_callback: {sid}, {data}")
         try:
             queue.put_nowait((data, Channels.get_timestamp_from_data(data)))
         except Full:
