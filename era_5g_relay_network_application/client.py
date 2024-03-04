@@ -9,8 +9,8 @@ import rclpy  # pants: no-infer-dep
 from cv_bridge import CvBridge  # pants: no-infer-dep
 from rclpy.executors import MultiThreadedExecutor  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
-from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy  # pants: no-infer-dep
 from rclpy.parameter import Parameter  # pants: no-infer-dep
+from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy  # pants: no-infer-dep
 
 from era_5g_client.client import NetAppClient
 from era_5g_client.client_base import NetAppClientBase
