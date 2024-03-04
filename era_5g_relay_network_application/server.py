@@ -8,7 +8,7 @@ from queue import Full
 from typing import Any, Dict, Optional, Tuple, Union
 
 import rclpy  # pants: no-infer-dep
-from rclpy.parameter import Parameter
+from rclpy.parameter import Parameter  # pants: no-infer-dep
 from rclpy.qos import QoSProfile  # pants: no-infer-dep
 
 from era_5g_interface.channels import CallbackInfoServer, Channels, ChannelType

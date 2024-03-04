@@ -27,6 +27,7 @@ from era_5g_relay_network_application.utils import (
     load_entities_list,
     load_transform_list,
 )
+from era_5g_relay_network_application.worker_clock import WorkerClock
 from era_5g_relay_network_application.worker_image_publisher import WorkerImagePublisher
 from era_5g_relay_network_application.worker_image_subscriber import WorkerImageSubscriber
 from era_5g_relay_network_application.worker_publisher import WorkerPublisher
@@ -44,6 +45,9 @@ logger = logging.getLogger("relay client python")
 USE_MIDDLEWARE = os.getenv("USE_MIDDLEWARE", "false").lower() in ("true", "1", "t")
 # ip address or hostname of the computer, where the netapp is deployed
 NETAPP_ADDRESS = os.getenv("NETAPP_ADDRESS", "http://localhost:5896")
+
+# flag to generate and send /clock topic to the server
+SEND_CLOCK = os.getenv("SEND_CLOCK", "false").lower() in ("true", "1", "t")
 
 # parameters for register method
 WAIT_UNTIL_AVAILABLE = os.getenv("WAIT_UNTIL_AVAILABLE", "false").lower() in ("true", "1")
@@ -298,6 +302,17 @@ def main(args=None) -> None:
         else:
             client = NetAppClientBase(callbacks_info, extended_measuring=EXTENDED_MEASURING)
             client.register(f"{NETAPP_ADDRESS}", {"subscribe_results": True}, WAIT_UNTIL_AVAILABLE, WAIT_TIMEOUT)
+
+        if SEND_CLOCK:
+            send_function_clock: SendFunctionProtocol = partial(
+                client.send_data,
+                event="topic//clock",
+                channel_type=ChannelType.JSON,
+                can_be_dropped=True,
+            )
+            worker_clock = WorkerClock(send_function_clock, node)
+            worker_clock.daemon = True
+            worker_clock.start()
 
         # create socketio workers for all topics and services to be sent to the relay server
         for topic_out in topics_outgoing_list:
