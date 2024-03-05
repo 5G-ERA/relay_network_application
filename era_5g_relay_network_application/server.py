@@ -8,6 +8,7 @@ from queue import Full
 from typing import Any, Dict, Optional, Tuple, Union
 
 import rclpy  # pants: no-infer-dep
+from rclpy.parameter import Parameter  # pants: no-infer-dep
 from rclpy.qos import QoSProfile  # pants: no-infer-dep
 
 from era_5g_interface.channels import CallbackInfoServer, Channels, ChannelType
@@ -43,7 +44,7 @@ NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 QUEUE_LENGTH_TOPICS = int(os.getenv("QUEUE_LENGTH_TOPICS", 1))
 QUEUE_LENGTH_SERVICES = int(os.getenv("QUEUE_LENGTH_SERVICES", 1))
 QUEUE_LENGTH_TF = int(os.getenv("QUEUE_LENGTH_TF", 1))
-
+USE_SIM_TIME = os.getenv("USE_SIM_TIME", "false").lower() in ("true", "1", "t")
 EXTENDED_MEASURING = bool(os.getenv("EXTENDED_MEASURING", False))
 
 
@@ -304,8 +305,6 @@ class RelayServer(NetworkApplicationServer):
             data (Dict): The json data.
             queue (Queue): The queue to pass the data to the publisher worker.
         """
-
-        print(f"json_callback: {sid}, {data}")
         try:
             queue.put_nowait((data, Channels.get_timestamp_from_data(data)))
         except Full:
@@ -397,6 +396,8 @@ def main(args=None) -> None:
 
     rclpy.init(args=args)
     node = rclpy.create_node("relay_netapp")
+    use_sim_time = Parameter("use_sim_time", Parameter.Type.BOOL, USE_SIM_TIME)
+    node.set_parameters([use_sim_time])
     node.get_logger().set_level(logging.DEBUG)
     node.get_logger().debug(f"Loaded outgoing topics: {topics_outgoing_list}")
     node.get_logger().debug(f"Loaded incoming topics: {topics_incoming_list}")

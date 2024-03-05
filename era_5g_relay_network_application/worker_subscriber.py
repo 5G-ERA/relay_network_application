@@ -124,7 +124,7 @@ class WorkerSubscriber:
         if isinstance(data, PointCloud2) and self.compression == Compressions.DRACO:
             np_arr = read_points_numpy(data, field_names=["x", "y", "z"], skip_nans=True)  # drop intensity, etc....
             cpc = DracoPy.encode(np_arr, compression_level=1)
-            msg = cpc
+            msg["data"] = cpc
 
         try:
             if self.action_topic_variant == ActionTopicVariant.ACTION_FEEDBACK:

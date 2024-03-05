@@ -9,8 +9,8 @@ import rclpy  # pants: no-infer-dep
 from cv_bridge import CvBridge  # pants: no-infer-dep
 from rclpy.executors import MultiThreadedExecutor  # pants: no-infer-dep
 from rclpy.node import Node  # pants: no-infer-dep
+from rclpy.parameter import Parameter  # pants: no-infer-dep
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy  # pants: no-infer-dep
-from rosbridge_library.internal import ros_loader  # pants: no-infer-dep
 
 from era_5g_client.client import NetAppClient
 from era_5g_client.client_base import NetAppClientBase
@@ -27,6 +27,7 @@ from era_5g_relay_network_application.utils import (
     load_entities_list,
     load_transform_list,
 )
+from era_5g_relay_network_application.worker_clock import WorkerClock
 from era_5g_relay_network_application.worker_image_publisher import WorkerImagePublisher
 from era_5g_relay_network_application.worker_image_subscriber import WorkerImageSubscriber
 from era_5g_relay_network_application.worker_publisher import WorkerPublisher
@@ -45,6 +46,9 @@ USE_MIDDLEWARE = os.getenv("USE_MIDDLEWARE", "false").lower() in ("true", "1", "
 # ip address or hostname of the computer, where the netapp is deployed
 NETAPP_ADDRESS = os.getenv("NETAPP_ADDRESS", "http://localhost:5896")
 
+# flag to generate and send /clock topic to the server
+SEND_CLOCK = os.getenv("SEND_CLOCK", "false").lower() in ("true", "1", "t")
+
 # parameters for register method
 WAIT_UNTIL_AVAILABLE = os.getenv("WAIT_UNTIL_AVAILABLE", "false").lower() in ("true", "1")
 WAIT_TIMEOUT = int(os.getenv("WAIT_UNTIL_AVAILABLE_TO", -1))
@@ -60,6 +64,9 @@ MIDDLEWARE_TASK_ID = os.getenv("MIDDLEWARE_TASK_ID", "00000000-0000-0000-0000-00
 # middleware robot id (robot id)
 MIDDLEWARE_ROBOT_ID = os.getenv("MIDDLEWARE_ROBOT_ID", "00000000-0000-0000-0000-000000000000")
 
+
+USE_SIM_TIME = os.getenv("USE_SIM_TIME", "false").lower() in ("true", "1", "t")
+
 QUEUE_LENGTH_TOPICS = int(os.getenv("QUEUE_LENGTH_TOPICS", 1))
 QUEUE_LENGTH_SERVICES = int(os.getenv("QUEUE_LENGTH_SERVICES", 1))
 QUEUE_LENGTH_TF = int(os.getenv("QUEUE_LENGTH_TF", 1))
@@ -72,6 +79,7 @@ client: Optional[NetAppClientBase] = None
 topics_workers: Dict[str, WorkerPublisher] = dict()
 services_workers: Dict[str, WorkerServiceServer] = dict()
 socketio_workers: List[WorkerSocketIO] = list()
+
 
 node: Optional[Node] = None
 
@@ -208,6 +216,8 @@ def main(args=None) -> None:
     rclpy.init(args=args)
     global node
     node = rclpy.create_node("relay_client")
+    use_sim_time = Parameter("use_sim_time", Parameter.Type.BOOL, USE_SIM_TIME)
+    node.set_parameters([use_sim_time])
     node.get_logger().set_level(logging.DEBUG)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
@@ -226,6 +236,7 @@ def main(args=None) -> None:
 
     node.get_logger().debug(f"Loaded outgoing topics: {topics_outgoing_list}")
     node.get_logger().debug(f"Loaded incoming topics: {topics_incoming_list}")
+
     node.get_logger().debug(f"Loaded outgoing services: {services}")
 
     global client
@@ -292,12 +303,19 @@ def main(args=None) -> None:
             client = NetAppClientBase(callbacks_info, extended_measuring=EXTENDED_MEASURING)
             client.register(f"{NETAPP_ADDRESS}", {"subscribe_results": True}, WAIT_UNTIL_AVAILABLE, WAIT_TIMEOUT)
 
+        if SEND_CLOCK:
+            send_function_clock: SendFunctionProtocol = partial(
+                client.send_data,
+                event="topic//clock",
+                channel_type=ChannelType.JSON,
+                can_be_dropped=True,
+            )
+            worker_clock = WorkerClock(send_function_clock, node)
+            worker_clock.daemon = True
+            worker_clock.start()
+
         # create socketio workers for all topics and services to be sent to the relay server
         for topic_out in topics_outgoing_list:
-            topic_type_class = ros_loader.get_message_instance(topic_out.type)
-
-            logger.info(f"Topic class is {topic_type_class}")
-
             subscriber_queue: Queue = Queue(QUEUE_LENGTH_TOPICS)
             channel_type = get_channel_type(topic_out.compression, topic_out.type)
 
