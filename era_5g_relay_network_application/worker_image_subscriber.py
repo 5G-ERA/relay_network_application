@@ -27,7 +27,7 @@ class WorkerImageSubscriber:
         node: Node,
         queue: AnyQueue,
         qos: Optional[QoSProfile] = None,
-        extended_measuring: bool = True,
+        extended_measuring: bool = False,
         **kw,
     ):
         """Constructor.

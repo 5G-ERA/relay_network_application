@@ -46,7 +46,7 @@ class WorkerSubscriber:
         qos: Optional[QoSProfile] = None,
         action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
         action_subscribers: Optional[ActionSubscribers] = None,
-        extended_measuring: bool = True,
+        extended_measuring: bool = False,
         **kw,
     ):
         """Constructor.

@@ -190,7 +190,16 @@ def set_up_ros_action(
         """Create action-related topic (i.e. Feedback and Status topics)."""
 
         queue: Queue = Queue(QUEUE_LENGTH_TOPICS)
-        worker = WorkerPublisher(queue, action_name, action_type, node, None, None, action_topic_variant)
+        worker = WorkerPublisher(
+            queue,
+            action_name,
+            action_type,
+            node,
+            None,
+            None,
+            action_topic_variant,
+            extended_measuring=EXTENDED_MEASURING,
+        )
 
         callback = partial(json_callback, queue=queue)
 
@@ -265,13 +274,29 @@ def main(args=None) -> None:
                 image_callback,
                 queue=queue,
             )
-            worker = WorkerImagePublisher(queue, topic_in.name, topic_in.type, node, topic_in.compression, topic_in.qos)
+            worker = WorkerImagePublisher(
+                queue,
+                topic_in.name,
+                topic_in.type,
+                node,
+                topic_in.compression,
+                topic_in.qos,
+                extended_measuring=EXTENDED_MEASURING,
+            )
         else:
             callback = partial(
                 json_callback,
                 queue=queue,
             )
-            worker = WorkerPublisher(queue, topic_in.name, topic_in.type, node, topic_in.compression, topic_in.qos)
+            worker = WorkerPublisher(
+                queue,
+                topic_in.name,
+                topic_in.type,
+                node,
+                topic_in.compression,
+                topic_in.qos,
+                extended_measuring=EXTENDED_MEASURING,
+            )
 
         callbacks_info[f"topic/{topic_in.name}"] = CallbackInfoClient(channel_type, callback)
 
@@ -320,7 +345,14 @@ def main(args=None) -> None:
             channel_type = get_channel_type(topic_out.compression, topic_out.type)
 
             if channel_type in IMAGE_CHANNEL_TYPES:
-                WorkerImageSubscriber(topic_out.name, topic_out.type, node, subscriber_queue, topic_out.qos)
+                WorkerImageSubscriber(
+                    topic_out.name,
+                    topic_out.type,
+                    node,
+                    subscriber_queue,
+                    topic_out.qos,
+                    extended_measuring=EXTENDED_MEASURING,
+                )
                 send_function: SendFunctionProtocol = partial(
                     send_image,
                     event=f"topic/{topic_out.name}",
@@ -330,7 +362,13 @@ def main(args=None) -> None:
                 )
             else:
                 WorkerSubscriber(
-                    topic_out.name, topic_out.type, node, subscriber_queue, topic_out.compression, topic_out.qos
+                    topic_out.name,
+                    topic_out.type,
+                    node,
+                    subscriber_queue,
+                    topic_out.compression,
+                    topic_out.qos,
+                    extended_measuring=EXTENDED_MEASURING,
                 )
                 send_function: SendFunctionProtocol = partial(  # type: ignore  # deals with "name already defined"
                     client.send_data, event=f"topic/{topic_out.name}", channel_type=channel_type, can_be_dropped=True
