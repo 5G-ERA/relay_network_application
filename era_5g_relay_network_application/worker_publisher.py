@@ -35,7 +35,7 @@ class WorkerPublisher(Thread):
         compression: Optional[Compressions],
         qos: Optional[QoSProfile] = None,
         action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
-        extended_measuring: bool = True,
+        extended_measuring: bool = False,
         **kw,
     ) -> None:
         """

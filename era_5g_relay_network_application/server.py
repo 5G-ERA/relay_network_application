@@ -88,11 +88,22 @@ class RelayTopicIncoming(RelayTopic):
 
         if self.channel_type in IMAGE_CHANNEL_TYPES:
             self.worker = WorkerImagePublisher(
-                self.queue, self.topic_name, self.topic_type, compression=compression, node=node
+                self.queue,
+                self.topic_name,
+                self.topic_type,
+                compression=compression,
+                node=node,
+                extended_measuring=EXTENDED_MEASURING,
             )
         else:
             self.worker = WorkerPublisher(
-                self.queue, self.topic_name, self.topic_type, node, self.compression, self.qos
+                self.queue,
+                self.topic_name,
+                self.topic_type,
+                node,
+                self.compression,
+                self.qos,
+                extended_measuring=EXTENDED_MEASURING,
             )
         self.worker.daemon = True
         self.worker.start()
@@ -121,10 +132,20 @@ class RelayTopicOutgoing(RelayTopic):
         self.worker: Union[WorkerImageSubscriber, WorkerSubscriber]
 
         if self.channel_type in IMAGE_CHANNEL_TYPES:
-            self.worker = WorkerImageSubscriber(topic_name, topic_type, node, self.queue)
+            self.worker = WorkerImageSubscriber(
+                topic_name, topic_type, node, self.queue, extended_measuring=EXTENDED_MEASURING
+            )
         else:
             self.worker = WorkerSubscriber(
-                topic_name, topic_type, node, self.queue, compression, qos, action_topic_variant, action_subscribers
+                topic_name,
+                topic_type,
+                node,
+                self.queue,
+                compression,
+                qos,
+                action_topic_variant,
+                action_subscribers,
+                extended_measuring=EXTENDED_MEASURING,
             )
             # Topic name may be changed in case of action-related topics
             self.channel_name = f"topic/{self.worker.topic_name}"
