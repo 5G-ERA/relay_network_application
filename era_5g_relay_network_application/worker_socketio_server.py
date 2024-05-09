@@ -18,11 +18,14 @@ class WorkerSocketIOServer(WorkerSocketIO):
 
     def send_data(self, data: Any):
         assert self.send_function
-
-        for s in self.subscribers:
-            try:
-                self.send_function(data, sid=s)
-            except BackPressureException:
-                logging.warning("Backpressure applied.")
-            except BadNamespaceError:
-                logging.warning("Trying to send data while not connected to the network application")
+        if isinstance(data, tuple):  # if the data is tupple, it contains the sid of the intended receiver
+            sid, msg = data
+            self.send_function(data=msg, sid=sid)
+        else:
+            for s in self.subscribers:
+                try:
+                    self.send_function(data, sid=s)
+                except BackPressureException:
+                    logging.warning("Backpressure applied.")
+                except BadNamespaceError:
+                    logging.warning("Trying to send data while not connected to the network application")

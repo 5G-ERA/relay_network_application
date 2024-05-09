@@ -5,34 +5,30 @@ import threading
 from functools import partial
 from multiprocessing import Queue
 from queue import Full
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import rclpy  # pants: no-infer-dep
 from rclpy.parameter import Parameter  # pants: no-infer-dep
-from rclpy.qos import QoSProfile  # pants: no-infer-dep
 
 from era_5g_interface.channels import CallbackInfoServer, Channels, ChannelType
 from era_5g_interface.dataclasses.control_command import ControlCmdType, ControlCommand
 from era_5g_interface.utils.locked_set import LockedSet
-from era_5g_relay_network_application import can_be_dropped_from_qos, queue_len_from_qos
+from era_5g_relay_network_application import can_be_dropped_from_qos
+from era_5g_relay_network_application.data.service import RelayService
+from era_5g_relay_network_application.data.topic import RelayTopicIncoming, RelayTopicOutgoing
 from era_5g_relay_network_application.utils import (
     IMAGE_CHANNEL_TYPES,
     ActionServiceVariant,
     ActionSubscribers,
     ActionTopicVariant,
-    Compressions,
     EntityConfig,
     get_channel_type,
     load_entities_list,
     load_transform_list,
 )
-from era_5g_relay_network_application.worker_image_publisher import WorkerImagePublisher
-from era_5g_relay_network_application.worker_image_subscriber import WorkerImageSubscriber
-from era_5g_relay_network_application.worker_publisher import WorkerPublisher
-from era_5g_relay_network_application.worker_service import ServiceData, WorkerService
+from era_5g_relay_network_application.worker_commands import WorkerCommands
 from era_5g_relay_network_application.worker_socketio import WorkerSocketIO
 from era_5g_relay_network_application.worker_socketio_server import WorkerSocketIOServer
-from era_5g_relay_network_application.worker_subscriber import WorkerSubscriber
 from era_5g_relay_network_application.worker_tf import WorkerTF
 from era_5g_server.server import NetworkApplicationServer
 
@@ -42,152 +38,9 @@ logger = logging.getLogger("relay server python")
 # port of the netapp's server
 NETAPP_PORT = int(os.getenv("NETAPP_PORT", 5896))
 
-QUEUE_LENGTH_TOPICS = int(os.getenv("QUEUE_LENGTH_TOPICS", 1))
 QUEUE_LENGTH_TF = int(os.getenv("QUEUE_LENGTH_TF", 1))
 USE_SIM_TIME = os.getenv("USE_SIM_TIME", "false").lower() in ("true", "1", "t")
 EXTENDED_MEASURING = bool(os.getenv("EXTENDED_MEASURING", False))
-
-
-class RelayTopic:
-    """Base class that holds information about topic and its type."""
-
-    def __init__(
-        self,
-        topic_name: str,
-        topic_type: str,
-        channel_type: ChannelType,
-        compression: Optional[Compressions] = None,
-        qos: Optional[QoSProfile] = None,
-    ):
-        self.topic_name = topic_name
-        self.topic_type = topic_type
-        self.compression = compression
-        self.qos = qos
-        self.channel_type = channel_type
-        self.channel_name = f"topic/{self.topic_name}"
-        self.queue: Queue[Any] = Queue(queue_len_from_qos(QUEUE_LENGTH_TOPICS, self.qos))
-
-
-class RelayTopicIncoming(RelayTopic):
-    """Class that holds information about incoming topic (i.e. topic that is received from the relay client and is
-    published here), its type and related publisher."""
-
-    def __init__(
-        self,
-        topic_name: str,
-        topic_type: str,
-        channel_type: ChannelType,
-        node,
-        compression: Optional[Compressions] = None,
-        qos: Optional[QoSProfile] = None,
-    ):
-        super().__init__(topic_name, topic_type, channel_type, compression, qos)
-
-        # this sucks, the classes should have some common ancestor or there should be two properties
-        self.worker: Union[WorkerImagePublisher, WorkerPublisher]
-
-        if self.channel_type in IMAGE_CHANNEL_TYPES:
-            self.worker = WorkerImagePublisher(
-                self.queue,
-                self.topic_name,
-                self.topic_type,
-                compression=compression,
-                node=node,
-                extended_measuring=EXTENDED_MEASURING,
-            )
-        else:
-            self.worker = WorkerPublisher(
-                self.queue,
-                self.topic_name,
-                self.topic_type,
-                node,
-                self.compression,
-                self.qos,
-                extended_measuring=EXTENDED_MEASURING,
-            )
-        self.worker.daemon = True
-        self.worker.start()
-
-
-class RelayTopicOutgoing(RelayTopic):
-    """Class that holds information about outgoing topic (i.e. topic that is subscribed to be sent to the relay client),
-    its type and related subscriber."""
-
-    def __init__(
-        self,
-        topic_name: str,
-        topic_type: str,
-        channel_type: ChannelType,
-        node: rclpy.node.Node,
-        compression: Optional[Compressions] = None,
-        qos: Optional[QoSProfile] = None,
-        action_topic_variant: ActionTopicVariant = ActionTopicVariant.NONE,
-        action_subscribers: Optional[ActionSubscribers] = None,
-    ):
-        super().__init__(topic_name, topic_type, channel_type, compression, qos)
-
-        self.action_topic_variant = action_topic_variant
-
-        # this sucks, the classes should have some common ancestor or there should be two properties
-        self.worker: Union[WorkerImageSubscriber, WorkerSubscriber]
-
-        if self.channel_type in IMAGE_CHANNEL_TYPES:
-            self.worker = WorkerImageSubscriber(
-                topic_name, topic_type, node, self.queue, extended_measuring=EXTENDED_MEASURING
-            )
-        else:
-            self.worker = WorkerSubscriber(
-                topic_name,
-                topic_type,
-                node,
-                self.queue,
-                compression,
-                qos,
-                action_topic_variant,
-                action_subscribers,
-                extended_measuring=EXTENDED_MEASURING,
-            )
-            # Topic name may be changed in case of action-related topics
-            self.channel_name = f"topic/{self.worker.topic_name}"
-            self.topic_name = self.worker.topic_name
-
-
-class RelayService:
-    """Class that holds information about incoming service (i.e. service that is called from relay client), its type and
-    related worker."""
-
-    def __init__(
-        self,
-        service_name: str,
-        service_type: str,
-        node: rclpy.node.Node,
-        qos: Optional[QoSProfile] = None,
-        action_service_variant: ActionServiceVariant = ActionServiceVariant.NONE,
-        action_subscribers: Optional[ActionSubscribers] = None,
-    ):
-        self.service_type = service_type
-
-        self.queue_request: Queue[ServiceData] = Queue(1)
-        self.queue_response: Queue[ServiceData] = Queue(1)
-
-        self.worker = WorkerService(
-            service_name,
-            service_type,
-            self.queue_request,
-            self.queue_response,
-            node,
-            qos,
-            action_service_variant,
-            action_subscribers,
-        )
-
-        # Service name can be changed by worker in case of action-related services
-        self.service_name = self.worker.service_name
-        self.channel_name_request = f"service_request/{self.service_name}"
-        self.channel_name_response = f"service_response/{self.service_name}"
-
-        self.worker.daemon = True
-        self.worker.start()
 
 
 class RelayServer(NetworkApplicationServer):
@@ -197,6 +50,7 @@ class RelayServer(NetworkApplicationServer):
         topics_incoming: Dict[str, RelayTopicIncoming],  # topics that are received from the relay client
         topics_outgoing: Dict[str, RelayTopicOutgoing],  # topics that are subscribed to be sent to the relay client
         services_incoming: Dict[str, RelayService],
+        command_queue: Queue,
         *args,
         tf_queue: Optional[Queue] = None,
         host: str = "0.0.0.0",
@@ -269,7 +123,7 @@ class RelayServer(NetworkApplicationServer):
         if tf_queue:
             send_function = partial(self.send_data, event="topic//tf")
             self.workers_outgoing["/tf"] = WorkerSocketIOServer(tf_queue, self.result_subscribers, send_function)
-
+        self.command_queue = command_queue
         self.topics_outgoing = topics_outgoing
         self.topics_incoming = topics_incoming
 
@@ -357,7 +211,6 @@ class RelayServer(NetworkApplicationServer):
         Returns:
             Tuple[bool, str]: Confirmation that the command was processed.
         """
-
         if command and command.cmd_type == ControlCmdType.INIT:
             args = command.data
             if args:
@@ -365,10 +218,8 @@ class RelayServer(NetworkApplicationServer):
                 if sr:
                     sid = self.get_sid_of_data(self.get_eio_sid_of_control(sid))
                     self.result_subscribers.add(sid)
-                    for topic_out in self.topics_outgoing.values():
-                        if topic_out.worker.memory is not None:
-                            for msg in topic_out.worker.memory:
-                                self.send_data_with_sid((sid, msg), topic_out.channel_name)
+                    # notify all worker subscribers so they send cached messages to the newly connected client
+                    self.command_queue.put_nowait((sid, command))
         return True, ""
 
     def disconnect_callback(self, eio_sid):
@@ -469,6 +320,10 @@ def main(args=None) -> None:
         tf_queue = Queue(QUEUE_LENGTH_TF)
         WorkerTF(transforms_to_listen, tf_queue, node)
 
+    command_queue: Queue = Queue(10)
+    worker_command = WorkerCommands(command_queue, topics_outgoing)
+    worker_command.daemon = True
+    worker_command.start()
     # create relay server
     socketio_process = RelayServer(
         NETAPP_PORT,
@@ -477,6 +332,7 @@ def main(args=None) -> None:
         services_incoming,
         tf_queue=tf_queue,
         extended_measuring=EXTENDED_MEASURING,
+        command_queue=command_queue,
     )
 
     # TODO: An exception in callbacks of executor nodes does not terminate the application!

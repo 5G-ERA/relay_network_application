@@ -124,7 +124,13 @@ class WorkerSubscriber:
             filename_prefix="subscription-" + self.topic_name.replace("/", ""),
         )
 
-    def callback(self, data: Any):
+    def flush_memory(self, sid: str) -> None:
+        """Send the content of the cache to the client with defined sid."""
+        if self.memory:
+            for msg in self.memory:
+                self.queue.put_nowait((sid, msg))
+
+    def callback(self, data: Any) -> None:
         before_callback_timestamp = time.perf_counter_ns()
 
         msg = extract_values(data)

@@ -76,6 +76,9 @@ class WorkerImageSubscriber:
             filename_prefix="subscription-" + self.topic_name.replace("/", ""),
         )
 
+    def flush_memory(self, sid: str) -> None:
+        pass  # TODO: implement latch support for images as well
+
     def callback(self, data: Any):
         before_callback_timestamp = time.perf_counter_ns()
         cv_image: Image = self.bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
