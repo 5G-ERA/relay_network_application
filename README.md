@@ -48,6 +48,22 @@ TOPICS_TO_SERVER = [
 The `name` field specifies the local name of the topic i.e., the name under which the robot provides
 certain data. The `type` field contains the textual representation of the topic's type, e.g., sensor_msgs/Image.
 
+Additionally, a `compression` field can be added. For image topics, available compression methods are `jpeg`, `h264` and `hevc`. In case of point clouds, `draco` compression is supported. Moreover, `lz4` compression is available for other topic types. Please note that whenever a compression is requested for a particular topic, the `compression` field with the same compression type *must* be specified for both the client and the server (i.e. also in server's `TOPICS_FROM_CLIENT` variable).
+
+Using h264 compression for an image topic can be denoted as:
+
+```json
+TOPICS_TO_SERVER = [
+  {
+    "name": "/axis/image_raw",
+    "type": "sensor_msgs/Image",
+    "compression": "h264"
+  }
+]
+```
+
+Other client's variables for sending services, actions, and transforms, are specified in the following way:
+
 ```json
 SERVICES_TO_SERVER = [
   {
