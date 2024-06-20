@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from typing import Any, Dict, Optional
 
@@ -16,6 +17,13 @@ image_buffer: Dict[int, np.ndarray] = dict()
 output_images_pub: Optional[Publisher] = None
 
 node: Optional[Node] = None
+
+# draw only bounding boxed for class "person"
+DRAW_PERSONS_ONLY = os.getenv("DRAW_PERSONS_ONLY", "False").lower() in ("true", "1", "t")
+
+INPUT_IMAGES = os.getenv("INPUT_IMAGES", "input_images")
+OUTPUT_IMAGES = os.getenv("OUTPUT_IMAGES", "output_images")
+RESULTS = os.getenv("RESULTS", "results")
 
 
 def results_callback(msg: Any) -> None:
@@ -48,6 +56,11 @@ def results_callback(msg: Any) -> None:
     for d in detections:
         score = float(d["score"])
         cls_name = d["class_name"]
+
+        if DRAW_PERSONS_ONLY and cls_name != "person":
+            # show "person" class only
+            continue
+
         # Draw detection into frame.
         x1, y1, x2, y2 = [int(coord) for coord in d["bbox"]]
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
@@ -65,13 +78,14 @@ def results_callback(msg: Any) -> None:
 
     assert output_images_pub
 
-    output_images_pub.publish(bridge.cv2_to_imgmsg(frame, encoding="bgr8"))
+    output_images_pub.publish(bridge.cv2_to_imgmsg(frame, encoding="rgb8"))
 
 
 def image_callback(image: Any) -> None:
     global image_buffer
 
-    image_buffer[image.header.stamp.to_nsec()] = bridge.imgmsg_to_cv2(image, desired_encoding="bgr8")
+    stamp_nsec = image.header.stamp.sec * 1000000000 + image.header.stamp.nanosec
+    image_buffer[stamp_nsec] = bridge.imgmsg_to_cv2(image, desired_encoding="rgb8")
 
     # make memory of images limited
     ts_to_keep = sorted(list(image_buffer.keys()))[-60:]
@@ -86,9 +100,13 @@ def main(args=None) -> None:
     node = rclpy.create_node("detection_viewer")
 
     try:
-        node.create_subscription(Image, "input_images", image_callback, 10)
-        node.create_subscription(String, "results", results_callback, 10)
-        output_images_pub = node.create_publisher(Image, "output_images", 10)
+        node.create_subscription(Image, INPUT_IMAGES, image_callback, 10)
+        node.create_subscription(String, RESULTS, results_callback, 10)
+        output_images_pub = node.create_publisher(Image, OUTPUT_IMAGES, 10)
+
+        node.get_logger().info(f"Input images: {INPUT_IMAGES}")
+        node.get_logger().info(f"Results topic: {RESULTS}")
+        node.get_logger().info(f"Output images: {OUTPUT_IMAGES}")
 
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=1.0)
