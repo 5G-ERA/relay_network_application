@@ -1,19 +1,15 @@
 # Relay Network Application
 
-This is ROS2 version
-
-Some useful example commands are [here](commands.md)
-
 This repository contains the Relay Network Application, which enables the seamless transition of
-ROS-based application from local deployments to remote deployments on cloud- or edge-devices.
-It uses methods of Rosbridge-suite for translation of ROS messages to JSON and vice versa.
-The Socket.IO library is used for transport of the data between robot and edge/cloud. It allows
-to mirror topics from robot to edge/server and vice versa. Moreover, it supports service calls
-from robot to edge/cloud.
+ROS2-based application from local to remote deployments on cloud or edge devices. 
+It mirrors user-selected topics, services, and actions between local and remote systems. 
+The Relay can be used together with the 5G-ERA [Middleware](https://github.com/5G-ERA/middleware), 
+or as a standalone deployment.
 
 ## Description
 
-The Relay Network Application consists of three parts: Relay Client, Relay Server and Relay Inter.
+The Relay Network Application consists of three parts: Relay Client, Relay Server and (optional) Relay Inter.
+Each part and its configuration is described in the following sections.
 
 ### Relay Client
 
@@ -240,21 +236,20 @@ contain list of topics, that should be routed to this Relay Server. The same is 
 The robot runs one Relay Client, which is connected to the Relay Inter in the cloud (Relay0).
 The Relay Inter is connected to two Relay Servers (Relay1, Relay2).
 
+
 ## ROS support
 
-Currently, in this branch, ROS2 is supported.
+Currently, ROS2 is supported. Minimum required version is ROS2 Foxy.
 
-## Protocol
-
-TBA
 
 ## Docker
 
-TBA
+Compose files are provided in [docker](/docker/) directory. Docker images are available on Docker Hub for both [client](https://hub.docker.com/r/but5gera/ros2_relay_client/tags) and [server](https://hub.docker.com/r/but5gera/ros2_relay_server/tags).
 
 ## Examples
 
-TBA
+Example commands are shown [here](commands.md).
+
 
 ## Contributing, development
 
