@@ -91,6 +91,9 @@ class RelayServer(NetworkApplicationServer):
         # callback_info needs to be passed to the parent class
         super().__init__(port, self.callbacks_info, *args, command_callback=self.command_callback, host=host, **kwargs)
         self.result_subscribers = LockedSet()  # contains data namespace SIDs of clients that want to receive results
+        # maps engine.io SID -> data namespace SID, so that disconnect_callback
+        # can discard the same identifier that was added on subscribe
+        self._result_subscriber_sids: Dict[str, str] = {}
 
         # collects info about topics that are subscribed to be sent to the relay client
         for topic_out in topics_outgoing.values():
@@ -216,15 +219,26 @@ class RelayServer(NetworkApplicationServer):
             if args:
                 sr = args.get("subscribe_results")
                 if sr:
-                    sid = self.get_sid_of_data(self.get_eio_sid_of_control(sid))
+                    eio_sid = self.get_eio_sid_of_control(sid)
+                    sid = self.get_sid_of_data(eio_sid)
                     self.result_subscribers.add(sid)
+                    self._result_subscriber_sids[eio_sid] = sid
                     # notify all worker subscribers so they send cached messages to the newly connected client
                     self.command_queue.put_nowait((sid, command))
         return True, ""
 
     def disconnect_callback(self, eio_sid):
-        """Removes the client from the list of result subscribers."""
-        self.result_subscribers.discard(eio_sid)
+        """Removes the client from the list of result subscribers.
+
+        The subscribe path stores DATA-namespace SIDs in result_subscribers,
+        while this callback receives the engine.io SID: discarding eio_sid
+        directly never matches, so entries of disconnected clients used to
+        stay in the set forever (the outgoing workers then kept forwarding
+        to dead subscribers, degrading egress throughput monotonically with
+        every client that ever connected)."""
+        data_sid = self._result_subscriber_sids.pop(eio_sid, None)
+        if data_sid is not None:
+            self.result_subscribers.discard(data_sid)
 
 
 def provide_action(
